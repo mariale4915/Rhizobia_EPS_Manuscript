@@ -1,0 +1,149 @@
+---
+title: "MucoidEPS.Rmd"
+author: "Maria Alejandra Gil Polo"
+date: "2025-12-09"
+output: html_document
+---
+```{r}
+
+library(here)
+library(ggplot2) 
+library(readxl)
+library(writexl)
+library(tidyverse)
+library(dplyr)
+```
+
+### Co-ocurrence
+
+I have made a table that has the number of nodules that I harvested per pair, and it also has the % of mucoid, dry and mixture. I also have the barplots in this code. The Data_input is added as well. 
+
+```{r setup, include=FALSE}
+## Document that has the single nodule data open 
+getwd()
+
+Individual_nodule_data <- read_excel(here("Data_input/Single_nodule_data.xlsx"))
+unique(Individual_nodule_data$Morphology)
+Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology
+View(Individual_nodule_data)
+### Create a table that shows the proportions of each morphology in the nodules 
+
+function_pair <- function(Partner) {c(
+  Name = Partner, 
+  nrow(Individual_nodule_data %>% filter(Name == Partner)),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mucoid"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Dry"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mixture"))/nrow(Individual_nodule_data %>% filter(Name == Partner))))
+}
+
+#unique(Individual_nodule_data$Name)
+Table_mix_percentage <- rbind(function_pair("091_101"), function_pair("015_099"), function_pair("016_100"), function_pair("029_098"))
+Table_mix_percentage <- as.data.frame(Table_mix_percentage)
+Table_mix_percentage
+
+colnames(Table_mix_percentage) <- c("Pair", "Number of nodules", "% Mucoid", "% Dry", "% Mixture")
+
+Table_mix_percentage
+
+write_xlsx(Table_mix_percentage, here("Tables/TableA_FromR.xlsx"))
+
+## Total number of nodules with mixture and with single 
+
+## Total of nodules with valid assessment (taking out the contaminations). The results suggest that from 225 nodules, 83% have a single morphology, either mucoid or dry, wherease mixtures occupy around 17% of the nodules. The data broken down is in the upper part. 
+
+Total_nod_number <- nrow(Individual_nodule_data)
+Total_nod_number #225 from an initial of 70*4 = 280
+
+
+percentage_mixture <- nrow(Individual_nodule_data %>% filter(Morphology == "Mixture"))/nrow(Individual_nodule_data)*100
+percentage_mixture #16.889
+percentage_single <- nrow(Individual_nodule_data %>% filter(Morphology %in% c("Mucoid", "Dry")))/nrow(Individual_nodule_data)*100
+percentage_single #83.111
+
+
+
+## Plot
+
+color_values <- c("Mucoid" = "#4eadb9",
+                  "Dry" = "#e0ba3e",
+                  "Mixture" = "#97b47c")
+
+coocurrence <- ggplot(Individual_nodule_data, 
+       aes(x = Name, 
+           fill = Morphology)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = color_values)+
+  labs(x = "Pair", y = "Proportion")+
+  theme(axis.text = element_text(face = "bold", hjust = 0.5, size = 14)) +
+  theme_bw()
+
+ggsave(coocurrence, 
+       filename = here("Figures" ,"coocurrence.pdf"),
+       device = "pdf",
+       height = 4, width = 6, units = "in")
+
+```
+
+### How many plants have a shift from dry to mucoid bacteria in the dual inoculation experiments.  
+
+```{r}
+
+
+### Limitations with these experiments is that I never really got to re-streak the colonies to confirm the phenotype for both examples.
+
+HarvestingDualSingle <- read_excel("~/OneDrive - The Pennsylvania State University/Burghardt Lab Shared Folder/Projects/NIFA-AVT-AlfalfaProjects/Aim1bAVT_StrainCollection/Chapter1_Partners_Mariale/Experiments/Dual_inoculation_experiment/Harvesting experiments/Harvesting_results_MASTER.xlsx", sheet = 1)
+
+View(HarvestingDualSingle)
+
+
+Harvesting_Single_Mucoid <- HarvestingDualSingle %>% filter(Morphology == "Mucoid")
+Harvesting_Single_Mucoid <-   Harvesting_Single_Mucoid %>% filter(Number_unilobed != "NA") %>% filter(Dilution != "NA") ## Eliminate the ones that do not have nodules
+View(Harvesting_Single_Mucoid) # 4 out of 22 plants had at least 1 dry colony recovered from the nodules
+
+
+Harvest_Single_Dry <- HarvestingDualSingle %>% filter(Morphology == "Dry")
+Harvest_Single_Dry <-   Harvest_Single_Dry  %>% filter(Number_unilobed != "NA") %>% filter(Dilution != "NA") ## Eliminate the ones that do not have nodules
+View(Harvest_Single_Dry) ## According to my notes 1 out of 19 plants had at least 1 colony that looked mucoid. 
+
+### Create a new column with the total number of cells. Nodule pooles were put in 3ml of saline solution and then they were homogenized. Then I took 100ul for teh dilution plating and then I plated 100ul. The calculated CFU per plant is 3*CFU*10^(Dil+1)
+
+CFU_Single_Mucoid <- HarvestingDualSingle %>%
+  mutate(
+    Colonies_Par   = as.numeric(as.character(Colonies_Par)),
+    Colonies_rhizo = as.numeric(as.character(Colonies_rhizo)),
+    Dilution       = as.numeric(as.character(Dilution))
+  ) %>%
+  mutate(
+    Dry_CFU_Total    = Colonies_Par * 3 * 10^(Dilution + 1),
+    Mucoid_CFU_Total = Colonies_rhizo * 3 * 10^(Dilution + 1),
+    Total_CFU        = Dry_CFU_Total + Mucoid_CFU_Total
+  )
+
+View(CFU_Single_Mucoid)
+
+ggplot(CFU_Single_Mucoid %>% filter(Morphology == "Mucoid"), aes(x= Code, y = Total_CFU)) +
+  geom_jitter()
+
+ggplot(CFU_Single_Mucoid %>% filter(Morphology == "Dry"), aes(x= Code, y = Total_CFU)) +
+  geom_jitter()
+
+ggplot(CFU_Single_Mucoid %>% filter(!Morphology %in% c("Control", "Dual")), aes(x= Code, y = log10(Total_CFU), col= Morphology)) +
+  geom_jitter() +
+  facet_wrap(~Morphology)
+
+ggplot(CFU_Single_Mucoid %>% filter(!Morphology %in% c("Control", "Dual")), aes(x= Morphology, y = log10(Total_CFU), fill= Morphology)) +
+  geom_boxplot() +
+  geom_jitter() +
+  scale_fill_manual(values = color_values) +
+  theme_minimal() ## I do not know how trustworthy this is given that all of these are plants but there are at least 4 strains involved. Should I care about that, how do I account for that? 
+
+
+
+```
+## Anthrone assay: How much EPS are they producing. 
+
+```{r}
+
+
+```
+
