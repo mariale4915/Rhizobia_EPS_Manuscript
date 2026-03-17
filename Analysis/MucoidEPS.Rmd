@@ -20,6 +20,7 @@ library(dplyr)
 library(lme4)
 library(dplyr)
 library(writexl)
+library(emmeans)
 library(tidyverse)
 library(here)
 library(ggplot2)
@@ -28,6 +29,11 @@ library(remotes)
 #remotes::install_github("wilkelab/ggridges")
 library(lmerTest)
 library(ggridges)
+library(scales)
+library(broom)
+library(dplyr)
+library(writexl)
+
 
 ```
 
@@ -104,13 +110,11 @@ OD600_ave <- OD600 %>%
 ## I am going to merge both tables by 
 
 Anthrone <- merge(OD620_strains, OD600_ave, by = "Name")
-
+#View(Anthrone)
 Anthrone <- Anthrone %>%
   mutate(Glucose_OD600 = Glucose_quantity/OD600_ave) ## This value is the normalized glucose. We have normalized the EPS production (OD620) by the biomass (OD600). 
 
-Anthrone_complete <- Anthrone %>% filter(Strain != "121") ## It is an oulier of low production 
-
-Anthrone_complete <- Anthrone_complete %>% filter(Name != "112.3") ## Clean-up remove this from original file.
+Anthrone_complete <- Anthrone %>% filter(Name != "112.3") ## Clean-up remove this from original file.## Maybe this is Data_input
 
 write_xlsx(Anthrone_complete, here("Tables", "Anthrone_complete.xlsx"))
 
@@ -335,92 +339,42 @@ The drought received the same amount of cells than the other treatments in less 
 
 ```{r}
 
-#### Survival Mucoid
+### Survival
 
-Survival_Mesocoms_Mucoid_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Mucoid") ## Extracting the values for mucoid
-Survival_Mesocoms_Mucoid_ave_NoInitial <- Survival_Mesocoms_Mucoid_ave %>% filter(Timepoint != "0") ## Filtering out the initial values
-initial_baseline_mucoid <- Survival_Mesocoms_Mucoid_ave %>% filter(Timepoint == "0") ## Extract Timepoint "0"
+expand_survival_baseline <- function(data, morphology_value) {
+  
+  dat_morph <- data %>%
+    filter(Morphology == morphology_value)
+  
+  dat_no_initial <- dat_morph %>%
+    filter(Timepoint != "0")
+  
+  initial_baseline <- dat_morph %>%
+    filter(Timepoint == "0")
+  
+  treatments_to_add <- dat_no_initial %>%
+    distinct(Treatment) %>%
+    pull(Treatment) %>%
+    unique()
+  
+  baseline_rows <- purrr::map_dfr(
+    treatments_to_add,
+    ~ initial_baseline %>%
+      mutate(Treatment = .x, Timepoint = "0")
+  )
+  
+  expanded <- bind_rows(baseline_rows, dat_no_initial) %>%
+    mutate(Log10Total = log10(Total_CFU_ave))
+  
+  return(expanded)
+}
 
-## Treatments that need that "0" data added
-treatments_to_add_mucoid <- Survival_Mesocoms_Mucoid_ave_NoInitial %>% ## I will put it to the treatments that do not include the initial treatment
-  distinct(Treatment) %>%
-  pull(Treatment)
-
-treatments_to_add_mucoid <- unique(treatments_to_add_mucoid)
-
-baseline_rows <- purrr::map_dfr( ### This code adds the values in "0" timepoint to all of the treatments. 
-  treatments_to_add_mucoid,
-  ~ initial_baseline_mucoid %>%
-    mutate(Treatment = .x, Timepoint = "0")  
-)
-baseline_rows
-
-Survival_Mesocoms_Mucoid_ave.expanded <- bind_rows(baseline_rows, Survival_Mesocoms_Mucoid_ave_NoInitial) ## Integrate the 0wk data with the initial file 
-
-Survival_Mesocoms_Mucoid_ave.expanded$Log10Total <- log10(Survival_Mesocoms_Mucoid_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
-
-
-
-### Survival Dry
-
-Survival_Mesocoms_Dry_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Dry") ## Filter out the Dry mesocosm 
-
-Survival_Mesocoms_Dry_NoInitial_ave <- Survival_Mesocoms_Dry_ave %>% filter(Timepoint != "0") #Extract the initial values
-
-
-initial_baseline_Dry <- Survival_Mesocoms_Dry_ave %>% filter(Timepoint == "0") 
-
-treatments_to_add_Dry <- Survival_Mesocoms_Dry_NoInitial_ave %>%
-  distinct(Treatment) %>%
-  pull(Treatment)
-
-treatments_to_add_Dry <- unique(treatments_to_add_Dry)
+Survival_Mesocoms_Mucoid_ave.expanded  <- expand_survival_baseline(Survival_Mesocoms_ave, "Mucoid")
+Survival_Mesocoms_Dry_ave.expanded     <- expand_survival_baseline(Survival_Mesocoms_ave, "Dry")
+Survival_Mesocoms_Mixture_ave.expanded <- expand_survival_baseline(Survival_Mesocoms_ave, "Mixture")
 
 
-baseline_rows <- purrr::map_dfr(
-  treatments_to_add_Dry,
-  ~ initial_baseline_Dry %>%
-    mutate(Treatment = .x, Timepoint = "0")  
-)
-baseline_rows
-
-Survival_Mesocoms_Dry_ave.expanded <- bind_rows(baseline_rows, Survival_Mesocoms_Dry_NoInitial_ave) ## Integrate the 0wk data with the initial file 
-
-Survival_Mesocoms_Dry_ave.expanded$Log10Total <- log10(Survival_Mesocoms_Dry_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
-
-### Mixture 
-
-Survival_Mesocoms_Mixture_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Mixture") ## Filter out the Dry mesocosm 
-
-Survival_Mesocoms_Mixture_NoInitial_ave <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint != "0") #Extract the initial values
-
-initial_baseline_Mixture <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint == "0") 
-
-treatments_to_add_Mixture <- Survival_Mesocoms_Mixture_NoInitial_ave %>%
-  distinct(Treatment) %>%
-  pull(Treatment)
-
-treatments_to_add_Mixture <- unique(treatments_to_add_Mixture)
-
-
-baseline_rows <- purrr::map_dfr(
-  treatments_to_add_Mixture,
-  ~ initial_baseline_Mixture %>%
-    mutate(Treatment = .x, Timepoint = "0")  
-)
-baseline_rows
-
-Survival_Mesocoms_Mixture_ave.expanded <- bind_rows(baseline_rows, Survival_Mesocoms_Mixture_NoInitial_ave) ## Integrate the 0wk data with the initial file 
-
-Survival_Mesocoms_Mixture_ave.expanded$Log10Total <- log10(Survival_Mesocoms_Mixture_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
-
-
-
-### I will bring both Dry and Mucoid together but Dry will have dashed lines and mucoid will have solid lines 
-
-Survival_Mesocosm.expanded <- rbind(Survival_Mesocoms_Mucoid_ave.expanded, Survival_Mesocoms_Dry_ave.expanded)
-#View(Survival_Mesocosm.expanded)
-
+Survival_Mesocosm.expanded <- rbind(Survival_Mesocoms_Mucoid_ave.expanded, Survival_Mesocoms_Dry_ave.expanded, Survival_Mesocoms_Mixture_ave.expanded)
 
 
 popsize.median_Survival <- Survival_Mesocosm.expanded %>% 
@@ -439,86 +393,53 @@ popsize.median_Survival
 ### Growth Mucoid ###
 
 
-Growth_Mesocoms_Mucoid_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Mucoid")
+expand_growth_baseline <- function(data, morphology_value) {
+  
+  dat_morph <- data %>%
+    filter(Morphology == morphology_value)
+  
+  dat_no_initial <- dat_morph %>%
+    filter(Timepoint != "0")
+  
+  initial_baseline <- dat_morph %>%
+    filter(Timepoint == "0")
+  
+  treatments_to_add <- dat_no_initial %>%
+    distinct(Treatment) %>%
+    pull(Treatment) %>%
+    unique()
+  
+  baseline_rows <- purrr::map_dfr(
+    treatments_to_add,
+    ~ initial_baseline %>%
+      mutate(Treatment = .x, Timepoint = "0")
+  )
+  
+  expanded <- bind_rows(baseline_rows, dat_no_initial) %>%
+    mutate(Log10Total = log10(Total_CFU_ave))
+  
+  return(expanded)
+}
 
-Growth_Mesocoms_Mucoid_NoDrought_ForInitial_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Mucoid" & !is.na(Timepoint) & Treatment != "Drought") ## To be able to extract NOT from Drought the initial
-
-### I will remove Drought because Drought has a different starting point. 
-Growth_Mesocoms_Mucoid_NoDrought_ave <- Growth_Mesocoms_Mucoid_ave %>% filter(Treatment != "Drought" & !Timepoint %in% c("0", "Inoculum")) ## I do not have the Drought initial measurement here 
-
-initial_baseline_mucoid <- Growth_Mesocoms_Mucoid_NoDrought_ForInitial_ave %>% filter(Timepoint == "0") 
-
-## Treatments that need that "0wk" data added
-treatments_to_add_mucoid <- Growth_Mesocoms_Mucoid_NoDrought_ave %>%
-  distinct(Treatment) %>%
-  pull(Treatment)
-treatments_to_add_mucoid
-
-treatments_to_add_mucoid <- unique(treatments_to_add_mucoid)
-
-baseline_rows <- purrr::map_dfr(
-  treatments_to_add_mucoid,
-  ~ initial_baseline_mucoid %>%
-    mutate(Treatment = .x, Timepoint = "0")  
-)
-baseline_rows
-Growth_Mesocoms_Mucoid_ave.expanded <- bind_rows(baseline_rows, Growth_Mesocoms_Mucoid_NoDrought_ave) ## Create the NonDrought starting counts
-
-
-Growth_Mesocoms_Mucoid_Drought_ave <- Growth_Mesocoms_Mucoid_ave %>% filter(Treatment == "Drought" & Timepoint != "Inoculum") ## I do have the Drought initial measurement here 
-## Integrate the 0wk data with the initial file 
-
-#View(Growth_Mesocoms_Mucoid_ave.expanded)
-Growth_Mesocoms_Mucoid_ave.expanded <- bind_rows(Growth_Mesocoms_Mucoid_Drought_ave, Growth_Mesocoms_Mucoid_ave.expanded)
-#View(Growth_Mesocoms_Mucoid_ave.expanded)
-
-Growth_Mesocoms_Mucoid_ave.expanded$Log10Total <- log10(Growth_Mesocoms_Mucoid_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
+Growth_Mesocoms_Mucoid_ave.expanded  <- expand_growth_baseline(Growth_Mesocoms_ave, "Mucoid")
+Growth_Mesocoms_Dry_ave.expanded     <- expand_growth_baseline(Growth_Mesocoms_ave, "Dry")
+Growth_Mesocoms_Mixture_ave.expanded <- expand_growth_baseline(Growth_Mesocoms_ave, "Mixture")
 
 
-### DRY
-
-Growth_Mesocoms_Dry_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Dry")
-
-Growth_Mesocoms_Dry_NoDrought_ForInitial_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Dry" & !is.na(Timepoint) & Treatment != "Drought") ## To be able to extract NOT from Drought the initial
-
-### I will remove Drought because Drought has a different starting point. 
-Growth_Mesocoms_Dry_NoDrought_ave <- Growth_Mesocoms_Dry_ave %>% filter(Treatment != "Drought" & !Timepoint %in% c("0", "Inoculum")) ## I do have the Drought initial measurement here 
-#View(Growth_Mesocoms_Mucoid_NoDrought_ave)#Has removed Drought and also the 0 and inoculum. Looks good. 
-
-initial_baseline_Dry <- Growth_Mesocoms_Dry_NoDrought_ForInitial_ave %>% filter(Timepoint == "0") 
-#View(initial_baseline)
-initial_baseline_Dry
-## Treatments that need that "0wk" data added
-treatments_to_add_Dry <- Growth_Mesocoms_Dry_NoDrought_ave %>%
-  distinct(Treatment) %>%
-  pull(Treatment)
-treatments_to_add_Dry
-
-treatments_to_add_Dry <- unique(treatments_to_add_Dry)
-treatments_to_add_Dry
-
-baseline_rows <- purrr::map_dfr(
-  treatments_to_add_Dry,
-  ~ initial_baseline_Dry %>%
-    mutate(Treatment = .x, Timepoint = "0")  
-)
-baseline_rows
-
-Growth_Mesocoms_Dry_Drought_ave <- Growth_Mesocoms_Dry_ave %>% filter(Treatment == "Drought" & Timepoint != "Inoculum") ## I do have the Drought initial measurement here 
-#View(Growth_Mesocoms_Mucoid_Drought_ave)
-## Integrate the 0wk data with the initial file 
-
-Growth_Mesocoms_Dry_ave.expanded <- bind_rows(baseline_rows, Growth_Mesocoms_Dry_NoDrought_ave) 
-
-Growth_Mesocoms_Dry_ave.expanded <- bind_rows(Growth_Mesocoms_Dry_Drought_ave, Growth_Mesocoms_Dry_ave.expanded)
 
 
-Growth_Mesocoms_Dry_ave.expanded$Log10Total <- log10(Growth_Mesocoms_Dry_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
+```
+
+#### Growth curves for mucoid, dry and mixtures for all the treatments. 
+
+```{r}
+
+
 
 
 ### I will bring both Dry and Mucoid together but Dry will have dashed lines and mucoid will have solid lines 
 
-Growth_Mesocosm.expanded <- rbind(Growth_Mesocoms_Mucoid_ave.expanded, Growth_Mesocoms_Dry_ave.expanded)
+Growth_Mesocosm.expanded <- rbind(Growth_Mesocoms_Mucoid_ave.expanded, Growth_Mesocoms_Dry_ave.expanded, Growth_Mesocoms_Mixture_ave.expanded)
 
 popsize.median_Growth<- Growth_Mesocosm.expanded %>%
   group_by(Timepoint, Treatment, Morphology) %>% 
@@ -537,19 +458,21 @@ popsize.median_Survival <- popsize.median_Survival %>%
   mutate(
     Condition  = "Survival",
     Timepoint  = factor(Timepoint,
-                        levels = c("0", "3months", "6months", "1year"))  
+                        levels = c("0", "3 months", "6 months", "12 months"))  
   )
 
 popsize.median_Growth <- popsize.median_Growth %>%
   mutate(
     Condition  = "Growth",
     Timepoint  = factor(Timepoint,
-                        levels = c("0", "7", "14", "21", "42", "60"))  
+                        levels = c("0", "7 days", "14 days", "21 days", "42 days", "60 days"))  
   )
 popsize.median_All <- dplyr::bind_rows(popsize.median_Survival,
                                        popsize.median_Growth)
 
-Survival_Growth <- ggplot(popsize.median_All %>% filter(Treatment != "4"),
+#View(popsize.median_All)
+
+Survival_Growth <- ggplot(popsize.median_All,
        aes(x = Timepoint, y = median,
            color = Treatment,
            linetype = Morphology,
@@ -558,7 +481,7 @@ Survival_Growth <- ggplot(popsize.median_All %>% filter(Treatment != "4"),
   geom_line() +
   geom_errorbar(aes(ymin = min, ymax = max), width = 0.05) +
   scale_color_manual(values = mycols) +
-  scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
+  scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed", "Mixture" = "dotted")) +
   xlab("Timepoint") +
   ylab("Log10(CFU/mesocosm)") +
   scale_y_log10() +
@@ -581,23 +504,9 @@ Survival_Growth
 ggsave(Survival_Growth, 
        filename = here("Figures" ,"Survival_Growth.pdf"),
        device = "pdf",
-       height = 5, width = 10, units = "in")
+       height = 5, width = 15, units = "in")
 
 
-
-### SURVIVAL MIXTURE 
-
-
-Survival_Mesocoms_Mucoid_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Mucoid") ## Extracting the values for mucoid
-
-
-### GROWTH MIXTURE 
-
-```
-
-#### Growth curves for mucoid, dry and mixtures for all the treatments. 
-
-```{r}
 
 ### Run statistical tests. Which has higher fitness in the soil. 
 
@@ -632,7 +541,7 @@ diffs_Survival
 plotdf_Survival <- as.data.frame(confint(diffs_Survival)) #This converts the reuslts in a dataframe. 
 plotdf_Survival
 plotdf_Survival$Timepoint <- factor(plotdf_Survival$Timepoint,
-  levels = c("3months", "6months", "1year")
+  levels = c("3 months", "6 months", "1 year")
 )
 
 ## Safe this file first. 
@@ -653,7 +562,7 @@ write_xlsx(diff_Survival_dataframe, here("Tables", "diff_Survival_dataframe.xlsx
 ## Growth
 
 
-Growth_Mesocoms_ave <- Growth_Mesocoms_ave %>% filter(Morphology %in% c("Mucoid", "Dry")) %>% filter(!Timepoint %in% c("0", "Inoculum")) %>% filter(Treatment != "4")
+Growth_Mesocoms_ave <- Growth_Mesocoms_ave %>% filter(Morphology %in% c("Mucoid", "Dry")) %>% filter(Timepoint != "0") %>% filter(Treatment != "4")
 Growth_Mesocoms_ave <- Growth_Mesocoms_ave %>%
   filter(!is.na(Total_CFU_ave), Total_CFU_ave > 0) ## Having a 0 as the Total_CFU_ave is problematic in downstream analysis because of log10(0)
 
@@ -677,102 +586,333 @@ write_xlsx(aov_Growth_FullModel_table, here("Tables", "aov_Growth_FullModel_tabl
 
 
 
-
-
-
-
-
-## Safe this file first. 
-diffs_Survival_dataframe <- as.data.frame(diffs_Survival)
-#View(diffs_Survival_dataframe)
-
-diff_Survival_dataframe <- diffs_Survival_dataframe %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`p.value` = ifelse(as.numeric(`p.value`) < 0.001, "< 0.001", `p.value`)) 
-
-write_xlsx(diff_Survival_dataframe, here("Tables", "diff_Survival_dataframe.xlsx"))
-
-
-
+### Now analyze within each
 emm_Growth <- emmeans(m_Growth, ~ Morphology | Treatment * Timepoint)
 emm_Growth
 
-
 diffs_Growth <- pairs(emm_Growth, adjust = "holm")
+diffs_Growth
 
+plotdf_Growth <- as.data.frame(confint(diffs_Growth)) #This converts the reuslts in a dataframe. 
+plotdf_Growth
+plotdf_Growth$Timepoint <- factor(plotdf_Growth$Timepoint,
+  levels = c("7 days", "14 days", "21 days", "42 days", "60 days")
+)
+
+## Safe this file first. 
+diffs_Growth_dataframe <- as.data.frame(diffs_Growth)
+
+diff_Growth_dataframe <- diffs_Growth_dataframe %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`p.value` = ifelse(as.numeric(`p.value`) < 0.001, "< 0.001", `p.value`)) 
+
+diff_Growth_dataframe
+
+write_xlsx(diff_Growth_dataframe, here("Tables", "diff_Growth_dataframe.xlsx"))
 
 ```
-### Mixture individual growth 
+
+
+## Calculate percentage in mixtures
 
 ```{r}
-#View(Survival_Mesocoms_ave)
 
-Survival_Mesocosm_Mixture_initial_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Mixture")
-View(Survival_Mesocosm_Mixture_initial_ave)
+### Survival
 
-
-Growth_Mesocosm_Mixture_initial_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Mixture")
-
-View(Survival_Mesocosm_Mixture_initial_ave)
-
-
-popsize.median_Growth<- Survival_Mesocosm_Mixture_initial_ave %>%
-  group_by(Timepoint, Treatment) %>% 
-  summarise(
-    median = median(Log10Total, na.rm = TRUE),
-    min    = min(Log10Total, na.rm = TRUE),
-    max    = max(Log10Total, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-
-popsize.median_Survival$Condition <- "Survival"
-popsize.median_Growth$Condition <- "Growth"
-
-popsize.median_Survival <- popsize.median_Survival %>%
+Survival_Mesocoms_Mixture_ave.expanded <- Survival_Mesocoms_Mixture_ave.expanded %>%
   mutate(
     Condition  = "Survival",
     Timepoint  = factor(Timepoint,
-                        levels = c("0", "3months", "6months", "1year"))  
+                        levels = c("0", "3 months", "6 months", "12 months"))  
   )
 
-popsize.median_Growth <- popsize.median_Growth %>%
+
+Survival_Mesocosm_Mixture_initial_ave <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint == "0")
+
+Initial_ave_survival <- Survival_Mesocosm_Mixture_initial_ave %>% 
+  ungroup() %>% 
+  summarise(Initial_ave_survival = mean(Percentage_Dry_ave, na.rm = TRUE)) %>% 
+  pull(Initial_ave_survival)
+
+
+
+Survival_DryPercentage <- ggplot(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Timepoint != "0"), 
+                               aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2) +
+  scale_shape_manual(values = myshapes_survival) +
+  scale_fill_manual(values = mycols) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
+  geom_hline(yintercept= Initial_ave_survival, linetype="dashed", color="black", size=1) +
+  labs(x = "Treatment", y = "Percentage of Dry bacteria") +
+  theme_classic()
+
+
+Survival_DryPercentage
+
+
+ggsave(Survival_DryPercentage, 
+       filename = here("Figures","Survival_DryPercentage.pdf"), 
+       device = "pdf", 
+       height = 4, width = 5, units = "in")
+
+## Growth 
+
+
+Growth_Mesocoms_Mixture_ave.expanded <- Growth_Mesocoms_Mixture_ave.expanded %>%
   mutate(
     Condition  = "Growth",
     Timepoint  = factor(Timepoint,
-                        levels = c("0", "7", "14", "21", "42", "60"))  
-  )
-popsize.median_All <- dplyr::bind_rows(popsize.median_Survival,
-                                       popsize.median_Growth)
-
-Survival_Growth <- ggplot(Survival_Mesocosm_Mixture_initial_ave %>% filter(Treatment != "4"),
-       aes(x = Timepoint, y = median,
-           color = Treatment)) +   
-  geom_point() +
-  geom_line() +
-  geom_errorbar(aes(ymin = min, ymax = max), width = 0.05) +
-  scale_color_manual(values = mycols) +
-#  scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
-  xlab("Timepoint") +
-  ylab("Log10(CFU/mesocosm)") +
-  scale_y_log10() +
-  facet_wrap(~Condition,  scales = "free_x") +
-  theme_minimal(base_size = 12) +
-  theme(
-    text = element_text(family = "Helvetica", color = "black"),
-    axis.text = element_text(size = 10, color = "black"),
-    axis.title.x = element_text(size = 10),
-    axis.title.y = element_text(size = 10),
-    panel.grid = element_blank(),
-    axis.line = element_line(color = "black"),
-    axis.ticks = element_line(color = "black")
-#    legend.position = "none"
+                        levels = c("0", "7 days", "14 days", "21 days", "42 days", "60 days"))  
   )
 
-Survival_Growth
+
+Growth_Mesocosm_Mixture_initial_ave <- Growth_Mesocoms_Mixture_ave.expanded %>% filter(Timepoint == "0")
+
+Initial_ave_growth <- Growth_Mesocosm_Mixture_initial_ave %>% 
+  ungroup() %>% 
+  summarise(Initial_ave_growth = mean(Percentage_Dry_ave, na.rm = TRUE)) %>% 
+  pull(Initial_ave_growth)
+
+
+## I am filtering out 4C treatment because the plate did not growth
+Growth_DryPercentage <- ggplot(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Timepoint != "0") %>% filter(Treatment != "4"), 
+                               aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2) +
+  scale_shape_manual(values = myshapes_growth) +
+  scale_fill_manual(values = mycols) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
+  geom_hline(yintercept= Initial_ave_growth, linetype="dashed", color="black", size=1) +
+  labs(x = "Treatment", y = "Percentage of Dry bacteria") +
+  theme_classic()
+
+
+Growth_DryPercentage
+
+
+ggsave(Growth_DryPercentage, 
+       filename = here("Figures","Growth_DryPercentage.pdf"), 
+       device = "pdf", 
+       height = 4, width = 5, units = "in")
+
+
+### Stats for growth 
+aov6 <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment != "4"), Percentage_Dry_ave ~ Treatment*Timepoint)
+anova6 <- anova(aov6)
+anova6
+
+anova6_table <- rownames_to_column(as.data.frame(anova6), var = "Term")
+anova6_table
+
+anova6_table <- anova6_table %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`)
+anova6_table
+write_xlsx(anova6_table, here("Tables", "anova6_table_FromR.xlsx"))
+
+
+#### Subset within treatment 
+
+### 32C
+aov_growth_32 <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "32"), Percentage_Dry_ave ~ Timepoint)
+summary(aov_growth_32)
+
+coef_table_32C <- tidy(aov_growth_32) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    statistic = round(statistic, 3),
+    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
+  ) %>%
+  rename(
+    Term = term,
+    Estimate = estimate,
+    SE = std.error,
+    t_value = statistic,
+    p_value = p.value
+  ) %>%
+  mutate(Treatment = "32C")
+
+coef_table_32C
+
+
+### 22C
+
+aov_growth_22 <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "22"), Percentage_Dry_ave ~ Timepoint)
+summary(aov_growth_22)
+
+
+coef_table_22C <- tidy(aov_growth_22) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    statistic = round(statistic, 3),
+    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
+  ) %>%
+  rename(
+    Term = term,
+    Estimate = estimate,
+    SE = std.error,
+    t_value = statistic,
+    p_value = p.value
+  ) %>%
+  mutate(Treatment = "22C")
+
+coef_table_22C
+
+
+### Drought
+
+aov_growth_Drought <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "Drought"), Percentage_Dry_ave ~ Timepoint)
+summary(aov_growth_Drought)
+
+coef_table_Drought <- tidy(aov_growth_Drought) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    statistic = round(statistic, 3),
+    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
+  ) %>%
+  rename(
+    Term = term,
+    Estimate = estimate,
+    SE = std.error,
+    t_value = statistic,
+    p_value = p.value
+  ) %>%
+  mutate(Treatment = "Drought")
+
+coef_table_Drought
+
+Coef_Table_Growth <- rbind(coef_table_22C, coef_table_32C, coef_table_Drought)
+
+write_xlsx(Coef_Table_Growth, here("Tables", "Coef_Table_Growth_FromR.xlsx"))
+
+
+### SURVIVAL ###
+
+aov7 <- lm(data = Survival_Mesocoms_Mixture_ave.expanded, Percentage_Dry_ave ~ Treatment*Timepoint) ## I will not remove 4C from survival because the bacteria was maintained here
+anova7 <- anova(aov7)
+anova7
+
+anova7_table <- rownames_to_column(as.data.frame(anova7), var = "Term")
+anova7_table
+
+anova7_table <- anova7_table %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`)
+anova7_table
+write_xlsx(anova7_table, here("Tables", "anova7_table.xlsx"))
+
+
+#### Subset within treatment 
+
+### 32C
+aov_growth_32 <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "32"), Percentage_Dry_ave ~ Timepoint)
+
+coef_table_32C <- tidy(aov_growth_32) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    statistic = round(statistic, 3),
+    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
+  ) %>%
+  rename(
+    Term = term,
+    Estimate = estimate,
+    SE = std.error,
+    t_value = statistic,
+    p_value = p.value
+  ) %>%
+  mutate(Treatment = "32C")
+
+coef_table_32C
+
+
+### 22C
+
+aov_growth_22 <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "22"), Percentage_Dry_ave ~ Timepoint)
+#summary(aov_growth_22)
+
+
+coef_table_22C <- tidy(aov_growth_22) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    statistic = round(statistic, 3),
+    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
+  ) %>%
+  rename(
+    Term = term,
+    Estimate = estimate,
+    SE = std.error,
+    t_value = statistic,
+    p_value = p.value
+  ) %>%
+  mutate(Treatment = "22C")
+
+coef_table_22C
+
+
+### Drought
+
+aov_growth_Drought <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "Drought"), Percentage_Dry_ave ~ Timepoint)
+summary(aov_growth_Drought)
+
+coef_table_Drought <- tidy(aov_growth_Drought) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    statistic = round(statistic, 3),
+    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
+  ) %>%
+  rename(
+    Term = term,
+    Estimate = estimate,
+    SE = std.error,
+    t_value = statistic,
+    p_value = p.value
+  ) %>%
+  mutate(Treatment = "Drought")
+
+coef_table_Drought
+
+
+### 4C
+
+aov_growth_4 <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "4"), Percentage_Dry_ave ~ Timepoint)
+#summary(aov_growth_22)
+
+
+coef_table_4C <- tidy(aov_growth_4) %>%
+  mutate(
+    estimate = round(estimate, 3),
+    std.error = round(std.error, 3),
+    statistic = round(statistic, 3),
+    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
+  ) %>%
+  rename(
+    Term = term,
+    Estimate = estimate,
+    SE = std.error,
+    t_value = statistic,
+    p_value = p.value
+  ) %>%
+  mutate(Treatment = "4C")
+
+coef_table_4C
+
+
+Coef_Table_Survival <- rbind(coef_table_22C, coef_table_32C, coef_table_Drought, coef_table_4C)
+
+write_xlsx(Coef_Table_Survival, here("Tables", "Coef_Table_Survival_FromR.xlsx"))
 
 
 ```
+
 
 #### Shift from Mucoid to Dry
 
@@ -780,25 +920,10 @@ Survival_Growth
 
 ## Co-occurrence changes
 
-Mucoid_Reps_pivot_survival_mesocosm <- Survival_Mesocosm_Mucoid_ave %>%
-  pivot_longer(
-    cols = c(Mucoid_CFU_Total_ave, Dry_CFU_Total_ave),
-    names_to = "Morphology_colonies",
-    values_to = "CFU"
-  )
-
-#View(Mucoid_Reps_pivot_survival_mesocosm)
-library(scales)
-#View(Mucoid_Reps_pivot_survival_mesocosm)
-
-Mucoid_Reps_pivot_survival_mesocosm <- Mucoid_Reps_pivot_survival_mesocosm %>% 
-  mutate(Timepoint = factor(Timepoint, levels = c("0", "3months", "6months", "1year")))
-
-
 Survival_Mesocosm_Mucoid_NoIn <- Survival_Mesocosm_Mucoid_ave %>% filter(Treatment != "Initial")
 
 Survival_Mesocosm_Mucoid_NoIn <- Survival_Mesocosm_Mucoid_NoIn %>% 
-  mutate(Timepoint = factor(Timepoint, levels = c("3months", "6months", "1year")))
+  mutate(Timepoint = factor(Timepoint, levels = c("3 months", "6 months", "12 months")))
 
 
 Shift_Mucoid_Dry_Soil_Survival <- ggplot(
@@ -823,12 +948,11 @@ ggsave(Shift_Mucoid_Dry_Soil_Survival,
 Growth_Mesocosm_Mucoid_ave <- Growth_Mesocoms_ave %>%  filter(Morphology == "Mucoid")
 #View(Growth_Mesocosm_Mucoid_ave)
 
-Growth_Mesocosm_Mucoid_NoIn <- Growth_Mesocosm_Mucoid_ave %>% filter(!Timepoint %in% c("0", "Inoculum")) ## I need to make this standard with the survival one when I clean up the data
+Growth_Mesocosm_Mucoid_NoIn <- Growth_Mesocosm_Mucoid_ave %>% filter(Treatment != "Initial")
 
 Growth_Mesocosm_Mucoid_NoIn <- Growth_Mesocosm_Mucoid_NoIn %>% 
-  mutate(Timepoint = factor(Timepoint, levels = c("7", "14", "21", "42", "60")) )
+  mutate(Timepoint = factor(Timepoint, levels = c("7 days", "14 days", "21 days", "42 days", "60 days")) )
 
-#View(Growth_Mesocosm_Mucoid_NoIn)
 ## I will remove 4C 
 Growth_Mesocosm_Mucoid_NoIn <- Growth_Mesocosm_Mucoid_NoIn %>% filter(Treatment != "4")
 
@@ -836,8 +960,6 @@ sum(is.na(Growth_Mesocosm_Mucoid_NoIn$Percentage_Dry_ave))
 nrow(Growth_Mesocosm_Mucoid_NoIn)
 
 
-#View(Growth_Mesocosm_Mucoid_NoIn)
-#View(Shift_Mucoid_Dry_Soil_Growth)
 Growth_Mesocosm_Mucoid_NoIn <- Growth_Mesocosm_Mucoid_NoIn %>% filter(Timepoint != "60") ## Removing the one that Kelsey helped me measure becuase I don't trust her obseravtions of dry an dmucoid
 
 Shift_Mucoid_Dry_Soil_Growth <- ggplot(
@@ -956,6 +1078,8 @@ write_xlsx(Tukey_shift_survival_all, here("Tables", "TableSY_FromR.xlsx"))
 
 
 ```
+
+
 ### Shift from mucoid to dry in plant 
 
 ```{r}
@@ -964,7 +1088,7 @@ Dual_data <- read_excel("~/OneDrive - The Pennsylvania State University/Burghard
 #View(Dual_data)
 colnames(Dual_data)
 Dual_data_Mucoid <- Dual_data %>% filter(`Morphology...28` == "Mucoid") ## Get rid of that problem with the table that has the need for ...28
-View(Dual_data_Mucoid)
+#View(Dual_data_Mucoid)
 
 Dual_data_Mucoid <- Dual_data_Mucoid %>%
   mutate(
@@ -977,7 +1101,7 @@ Dual_data_Mucoid <- Dual_data_Mucoid %>%
     Percentage_Dry = Colonies_Dry /
       (Colonies_Dry + Colonies_Mucoid) * 100
   )
-View(Dual_data_Mucoid)
+#View(Dual_data_Mucoid)
 
 Shift_Mucoid_Dry_Plant <- ggplot(
   Dual_data_Mucoid,  aes(x = Strain, y = Percentage_Dry, fill = Strain)) +
@@ -989,429 +1113,29 @@ Shift_Mucoid_Dry_Plant
 
 
 ```
-### Figure 2 c and d: Mixture of strains dry bacteria takes over
-
-Will work with the mixtures here 
-
-```{r}
-
-### Survival ###
-#View(Survival_Mesocoms_ave)
-
-Survival_Mesocoms_ave <- Survival_Mesocosm %>% ## Ideally this part of the code should be removed from here once I get rid of the filter for only mucoid and dry that should be somewhere in stats
-  group_by(Name, Treatment, Morphology, Timepoint, Rep_tube) %>%
-  summarise(
-    Dry_CFU_Total_ave   = mean(Dry_CFU_Total,   na.rm = TRUE),
-    Mucoid_CFU_Total_ave = mean(Mucoid_CFU_Total, na.rm = TRUE),
-    Total_CFU_ave       = mean(Total_CFU,       na.rm = TRUE),
-    Percentage_Dry_ave  = mean(Percentage_Dry,  na.rm = TRUE),
-    .groups = "drop"
-  )
-
-
-Survival_Mesocoms_Mixture_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Mixture") ## Extracting the values for  Mixture
-
-Survival_Mesocoms_Mixture_ave_NoInitial <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint != "0") ## Filtering out the initial values
-
-initial_baseline_Mixture <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint == "0") ## Extract Timepoint "0"
-
-## Treatments that need that "0" data added
-treatments_to_add_Mixture <- Survival_Mesocoms_Mixture_ave_NoInitial %>% ## I will put it to the treatments that do not include the initial treatment
-  distinct(Treatment) %>%
-  pull(Treatment)
-
-treatments_to_add_Mixture <- unique(treatments_to_add_Mixture)
-
-baseline_rows <- purrr::map_dfr( ### This code adds the values in "0" timepoint to all of the treatments. 
-  treatments_to_add_Mixture,
-  ~ initial_baseline_Mixture %>%
-    mutate(Treatment = .x, Timepoint = "0")  
-)
-baseline_rows
-
-## Integrate the 0wk data with the initial file 
-
-Survival_Mesocoms_Mixture_ave.expanded <- bind_rows(baseline_rows, Survival_Mesocoms_Mixture_ave_NoInitial) 
-
-Survival_Mesocoms_Mixture_ave.expanded$Log10Total <- log10(Survival_Mesocoms_Mixture_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
-
-
-
-### Growth ###
-
-Growth_Mesocoms_Mixture_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Mixture") ## Extracting the values for  Mixture
-#View(Growth_Mesocoms_Mixture_ave)
-Growth_Mesocoms_Mixture_ave_NoInitial <- Growth_Mesocoms_Mixture_ave %>% filter(!Timepoint %in% c("0", "Inoculum")) ## Filtering out the initial values
-
-initial_baseline_Mixture <- Growth_Mesocoms_Mixture_ave %>% filter(Timepoint == "0" & Treatment != "Drought") ## Extract Timepoint "0", but I will excluse Drought because I do not have the measurement for mixture in Drought timepoint 0
-initial_baseline_Mixture
-## Treatments that need that "0" data added
-treatments_to_add_Mixture <- Growth_Mesocoms_Mixture_ave_NoInitial %>% ## I will put it to the treatments that do not include the initial treatment
-  distinct(Treatment) %>%
-  pull(Treatment)
-treatments_to_add_Mixture
-treatments_to_add_Mixture <- unique(treatments_to_add_Mixture)
-
-baseline_rows <- purrr::map_dfr( ### This code adds the values in "0" timepoint to all of the treatments. 
-  treatments_to_add_Mixture,
-  ~ initial_baseline_Mixture %>%
-    mutate(Treatment = .x, Timepoint = "0")  
-)
-baseline_rows
-
-## Integrate the 0wk data with the initial file 
-
-Growth_Mesocoms_Mixture_ave.expanded <- bind_rows(baseline_rows, Growth_Mesocoms_Mixture_ave_NoInitial) 
-
-Growth_Mesocoms_Mixture_ave.expanded$Log10Total <- log10(Growth_Mesocoms_Mixture_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
-
-```
-
-
-## Calculate percentage in mixtures
-
-```{r}
-
-
-Growth_Mesocoms_Mixture_ave.expanded <- Growth_Mesocoms_Mixture_ave.expanded %>%
-  mutate(
-    Condition  = "Growth",
-    Timepoint  = factor(Timepoint,
-                        levels = c("0", "7", "14", "21", "42"))  
-  )
-
-Survival_Mesocoms_Mixture_ave.expanded <- Survival_Mesocoms_Mixture_ave.expanded %>%
-  mutate(
-    Condition  = "Survival",
-    Timepoint  = factor(Timepoint,
-                        levels = c("0", "3months", "6months", "1year"))  
-  )
-
-Growth_Mesocosm_Mixture_initial_ave <- Growth_Mesocoms_Mixture_ave %>% filter(Timepoint == "0" & Treatment != "Drought")
-#View(Growth_Mesocosm_Mixture_initial_ave)
-Initial_ave_growth <- Growth_Mesocosm_Mixture_initial_ave %>% 
-  ungroup() %>% 
-  summarise(Initial_ave_growth = mean(Percentage_Dry_ave, na.rm = TRUE)) %>% 
-  pull(Initial_ave_growth)
-#View(Survival_Mesocoms_Mixture_ave.expanded)
-
-Mixture.expanded_all <- rbind(Survival_Mesocoms_Mixture_ave.expanded, Growth_Mesocoms_Mixture_ave.expanded)
-#View(Survival_Mesocoms_Mixture_ave.expanded)
-#View(Growth_Mesocoms_Mixture_ave.expanded)
-
-
-#View(Mixture.expanded_all)
-### Groth 
-Growth_DryPercentage <- ggplot(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Timepoint != "0" & Treatment != "4"), 
-                               aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
-  geom_boxplot(outlier.shape = NA) +
-  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2) +
-  scale_shape_manual(values = myshapes_growth) +
-  scale_fill_manual(values = mycols) +
-  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
-  geom_hline(yintercept= Initial_ave_growth, linetype="dashed", color="black", size=1) +
-  labs(x = "Treatment", y = "Percentage of Dry bacteria") +
-  theme_classic()
-
-Growth_DryPercentage
-
-ggsave(Growth_DryPercentage, 
-       filename = here("Figures","Growth_DryPercentage.pdf"), 
-       device = "pdf", 
-       height = 4, width = 5, units = "in")
-
-
-#View(Mixture.expanded_all)
-
-
-### Survival
-
-
-Survival_Mesocoms_Mixture_ave.expanded <- Survival_Mesocoms_Mixture_ave.expanded %>%
-  mutate(
-    Condition  = "Survival",
-    Timepoint  = factor(Timepoint,
-                        levels = c("0", "3months", "6months", "1year"))  
-  )
-
-
-
-#View(Survival_Mesocoms_Mixture_ave)
-
-Survival_Mesocosm_Mixture_initial_ave <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint == "0")
-
-Initial_ave_survival <- Survival_Mesocosm_Mixture_initial_ave %>% 
-  ungroup() %>% 
-  summarise(Initial_ave_survival = mean(Percentage_Dry_ave, na.rm = TRUE)) %>% 
-  pull(Initial_ave_survival)
-
-
-
-Survival_DryPercentage <- ggplot(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Timepoint != "0"), 
-                               aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
-  geom_boxplot(outlier.shape = NA) +
-  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2) +
-  scale_shape_manual(values = myshapes_survival) +
-  scale_fill_manual(values = mycols) +
-  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
-  geom_hline(yintercept= Initial_ave_growth, linetype="dashed", color="black", size=1) +
-  labs(x = "Treatment", y = "Percentage of Dry bacteria") +
-  theme_classic()
-
-
-Survival_DryPercentage
-
-
-ggsave(Survival_DryPercentage, 
-       filename = here("Figures","Survival_DryPercentage.pdf"), 
-       device = "pdf", 
-       height = 4, width = 5, units = "in")
-
-#### Using the % Dry bacteria
-
-#View(Growth_Mesocoms_Mixture_ave.expanded)
-
-
-
-aov6 <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment != "4"), Percentage_Dry_ave ~ Treatment*Timepoint)
-anova6 <- anova(aov6)
-anova6
-
-anova6_table <- rownames_to_column(as.data.frame(anova6), var = "Term")
-anova6_table
-
-anova6_table <- anova6_table %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`)
-anova6_table
-write_xlsx(anova6_table, "anova6_table.xlsx")
-
-
-
-
-#### Subset within treatment 
-
-### 32C
-aov_growth_32 <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "32"), Percentage_Dry_ave ~ Timepoint)
-summary(aov_growth_32)
-
-library(broom)
-library(dplyr)
-library(writexl)
-
-
-coef_table_32C <- tidy(aov_growth_32) %>%
-  mutate(
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    statistic = round(statistic, 3),
-    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
-  ) %>%
-  rename(
-    Term = term,
-    Estimate = estimate,
-    SE = std.error,
-    t_value = statistic,
-    p_value = p.value
-  ) %>%
-  mutate(Treatment = "32C")
-
-coef_table_32C
-
-
-### 22C
-
-aov_growth_22 <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "22"), Percentage_Dry_ave ~ Timepoint)
-summary(aov_growth_22)
-
-
-coef_table_22C <- tidy(aov_growth_22) %>%
-  mutate(
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    statistic = round(statistic, 3),
-    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
-  ) %>%
-  rename(
-    Term = term,
-    Estimate = estimate,
-    SE = std.error,
-    t_value = statistic,
-    p_value = p.value
-  ) %>%
-  mutate(Treatment = "22C")
-
-coef_table_22C
-
-
-### Drought
-
-aov_growth_Drought <- lm(data = Growth_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "Drought"), Percentage_Dry_ave ~ Timepoint)
-summary(aov_growth_Drought)
-
-coef_table_Drought <- tidy(aov_growth_Drought) %>%
-  mutate(
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    statistic = round(statistic, 3),
-    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
-  ) %>%
-  rename(
-    Term = term,
-    Estimate = estimate,
-    SE = std.error,
-    t_value = statistic,
-    p_value = p.value
-  ) %>%
-  mutate(Treatment = "Drought")
-
-coef_table_Drought
-
-Coef_Table_Growth <- rbind(coef_table_22C, coef_table_32C, coef_table_Drought)
-
-write_xlsx(Coef_Table_Growth, "Coef_Table_Growth_FromR.xlsx")
-
-
-### SURVIVAL ###
-
-aov7 <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment != "4"), Percentage_Dry_ave ~ Treatment*Timepoint)
-anova7 <- anova(aov7)
-anova7
-
-anova7_table <- rownames_to_column(as.data.frame(anova7), var = "Term")
-anova7_table
-
-anova7_table <- anova7_table %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`)
-anova7_table
-write_xlsx(anova7_table, "anova7_table.xlsx")
-
-
-
-
-
-anova7_table <- rownames_to_column(as.data.frame(anova7), var = "Term")
-anova7_table
-
-anova7_table <- anova7_table %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`)
-anova7_table
-write_xlsx(anova7_table, "anova7_table.xlsx")
-
-
-
-
-#### Subset within treatment 
-
-### 32C
-aov_growth_32 <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "32"), Percentage_Dry_ave ~ Timepoint)
-
-coef_table_32C <- tidy(aov_growth_32) %>%
-  mutate(
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    statistic = round(statistic, 3),
-    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
-  ) %>%
-  rename(
-    Term = term,
-    Estimate = estimate,
-    SE = std.error,
-    t_value = statistic,
-    p_value = p.value
-  ) %>%
-  mutate(Treatment = "32C")
-
-coef_table_32C
-
-
-### 22C
-
-aov_growth_22 <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "22"), Percentage_Dry_ave ~ Timepoint)
-#summary(aov_growth_22)
-
-
-coef_table_22C <- tidy(aov_growth_22) %>%
-  mutate(
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    statistic = round(statistic, 3),
-    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
-  ) %>%
-  rename(
-    Term = term,
-    Estimate = estimate,
-    SE = std.error,
-    t_value = statistic,
-    p_value = p.value
-  ) %>%
-  mutate(Treatment = "22C")
-
-coef_table_22C
-
-
-### Drought
-
-aov_growth_Drought <- lm(data = Survival_Mesocoms_Mixture_ave.expanded %>% filter(Treatment == "Drought"), Percentage_Dry_ave ~ Timepoint)
-summary(aov_growth_Drought)
-
-coef_table_Drought <- tidy(aov_growth_Drought) %>%
-  mutate(
-    estimate = round(estimate, 3),
-    std.error = round(std.error, 3),
-    statistic = round(statistic, 3),
-    p.value = ifelse(p.value < 0.001, "< 0.001", round(p.value, 3))
-  ) %>%
-  rename(
-    Term = term,
-    Estimate = estimate,
-    SE = std.error,
-    t_value = statistic,
-    p_value = p.value
-  ) %>%
-  mutate(Treatment = "Drought")
-
-coef_table_Drought
-
-Coef_Table_Survival <- rbind(coef_table_22C, coef_table_32C, coef_table_Drought)
-
-write_xlsx(Coef_Table_Survival, "Coef_Table_Survival_FromR.xlsx")
-
-
-```
 
 
 ## Comparing plant traits and fitness traits with mucosity calculated
 
-### Shoot biomass and nodule number
+### Arrange the plant trait file starting with plant harvesting and then rhizobial relative fitness
 
 ```{r}
 
-#View(CFU_Dry_Mucoid_data_density_short)
+## PLANT TRAITS
+
 ### Create the column nodule number, and from the single cell data I also have the CFU/area of nodule to determine the density of rhizobial released. 
 
 MasterSpreadsheet_AVT_Single_strain_exp <- read_excel("~/OneDrive - The Pennsylvania State University/Burghardt Lab Shared Folder/Projects/NIFA-AVT-AlfalfaProjects/Aim3AVT_SingleInoculationExp/_MasterSpreadsheet_AVT_Single_strain_exp.xlsx", sheet = 2)
 
-MasterSpreadsheet_AVT_Single_strain_exp <- MasterSpreadsheet_AVT_Single_strain_exp %>%
-  filter(!is.na(Morphology)) ##Filter out the mixtures and the strains that were not characterized
+MasterSpreadsheet_AVT_Single_strain_exp <- MasterSpreadsheet_AVT_Single_strain_exp %>%  
+  filter(!is.na(Morphology)) %>% ##Filter out the mixtures and the strains that were not characterized (probably commercial inoculum)
+  mutate(Nod_number = as.numeric(Nodule_LOBED) + as.numeric(Nodule_UN_Lobed),
+         Prop_branched = as.numeric(Nodule_LOBED)/Nod_number)
 
-MasterSpreadsheet_AVT_Single_strain_exp <- MasterSpreadsheet_AVT_Single_strain_exp %>%
-  mutate(Nod_number = as.numeric(Nodule_LOBED) + as.numeric(Nodule_UN_Lobed)) 
+MasterSpreadsheet_AVT_Single_strain_exp <- MasterSpreadsheet_AVT_Single_strain_exp %>% 
+  select(c(Strain, Variety, Morphology, Shootweight_g, Rootweight_g, Nod_number, Prop_branched)) ## Remove traits not important for this analysis
 
-MasterSpreadsheet_AVT_Single_strain_exp <- MasterSpreadsheet_AVT_Single_strain_exp %>%
-  mutate(Prop_branched = as.numeric(Nodule_LOBED)/Nod_number)
-
-MasterSpreadsheet_AVT_Single_strain_exp <- MasterSpreadsheet_AVT_Single_strain_exp %>%
-  select(c(Strain, Variety, Morphology, Shootweight_g, Rootweight_g, Nod_number, Prop_branched))
-
-
-
-MasterSpreadsheet_AVT_Single_strain_exp_summary <- 
+MasterSpreadsheet_AVT_Single_strain_exp_ave <- 
   MasterSpreadsheet_AVT_Single_strain_exp %>%
   group_by(Strain, Variety, Morphology) %>%
   summarise(
@@ -1422,181 +1146,80 @@ MasterSpreadsheet_AVT_Single_strain_exp_summary <-
     .groups = "drop"
   )
 
-#View(MasterSpreadsheet_AVT_Single_strain_exp_summary)
 
-#View(MasterSpreadsheet_AVT_Single_strain_exp_summary)
+## RHIZOBIA RELATIVE FITNESS 
 
-### Shoot biomass
+## I will import the file that Sohini sent me that has the information about the strains. 
 
-#View(MasterSpreadsheet_AVT_Single_strain_exp_summary)
+StrainFitness_Plants <- read.table("/Users/mariaalejandragilpolo/Downloads/Strain Fitness_AVTSS_pangenome.txt", header = TRUE, sep = "")
+View(StrainFitness_Plants)
+# This data set includes MC2 and also MIX. I think the one I need to use is MIX. Not MC2. I think MC2 has the extra commercial strains. 
+# I do not like the way the name of the strains are stored because it does not match the name I am giving htem so i will change that
 
-Anthrone_PlantBiomass_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_summary, aes(x= Morphology, y = ave_shoot, fill = Morphology)) +
-  geom_boxplot(outlier.shape = NA) +
-         geom_jitter() +
-        scale_fill_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Morphology",
-    y = "Plant shoot biomass (g)"
-  ) +
-  theme(legend.position = "none")
+StrainFitness_Plants <- StrainFitness_Plants %>% 
+  separate(col = pool, 
+           into = c("AG", "Type", "Variety", "Rep"), ## Type has MIX or MC2. I need to filter out MC2
+           sep = "_", 
+           remove = FALSE, 
+           fill = "right"
+  )
 
-Anthrone_PlantBiomass_boxplots
+#View(StrainFitness_Plants)
+## Filter out MC2 and only keep MIX values 
 
-### Nodule number 
+StrainFitness_Plants <- StrainFitness_Plants %>% filter(Type == "MIX")
 
-Anthrone_Nod_Number_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_summary, aes(x= Morphology, y = ave_nod_total, fill = Morphology)) +
-  geom_boxplot(outlier.shape = NA) +
-         geom_jitter() +
-        scale_fill_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Morphology",
-    y = "Nodule number"
-  ) +
-  theme(legend.position = "none")
+### I will shift this so that I have the colnames as rownames. I want a pivot longer
 
-Anthrone_Nod_Number_boxplots
+StrainFitness_Plants_long <- StrainFitness_Plants %>%
+  pivot_longer(
+    cols = -c(Variety,Rep,pool, AG, Type, Variety, Rep),                    
+    names_to = "Strain_Code",       
+    values_to = "Fitness"            
+  )
 
-ggsave("Morphology_Nod_Number_boxplots_FromR.pdf", Anthrone_Nod_Number_boxplots, width = 5, height = 3, units = "in") 
+#View(StrainFitness_Plants_long)
 
+Codes <- read_excel("/Users/mariaalejandragilpolo/Downloads/Strain_codes_Edited.xlsx")
+#View(Codes)
+### Now merge the files that they contain the same "Strain_Code"
 
-### Prop Branched nod
+StrainFitness_Plant <- merge(StrainFitness_Plants_long, Codes, by = "Strain_Code") ## This could be a Data_input for rhizobial fitness
+write_xlsx(StrainFitness_Plant, here("Data_input", "Strain_fitness_Plant_FromR.xlsx")) ## This could be a Data_input for rhizobial with the raw MIX data for rhizobial fitness (Filtered out MC2 here for this table)
 
 
-Morphology_Prop_Branched_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_summary, aes(x= Morphology, y = ave_prop_branched, fill = Morphology)) +
-  geom_boxplot(outlier.shape = NA) +
-         geom_jitter() +
-        scale_fill_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Morphology",
-    y = "Proportion branched nodules"
-  ) +
-  theme(legend.position = "none")
+### Now I will make the like boxplots. Average and put it somewhere??
 
-Morphology_Prop_Branched_boxplots
+StrainFitness_Plant_ave <- StrainFitness_Plant %>% 
+  group_by(Strain, Variety, Morphology) %>%
+  summarise(Fitness_ave = mean(Fitness))
 
-ggsave("Morphology_Prop_Branched_boxplots_FromR.pdf", Morphology_Prop_Branched_boxplots, width = 5, height = 3, units = "in") 
-
-
-Morphology_Root_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_summary, aes(x= Morphology, y = ave_root, fill = Morphology)) +
-  geom_boxplot(outlier.shape = NA) +
-         geom_jitter() +
-        scale_fill_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Morphology",
-    y = "Root biomass (g)"
-  ) +
-  theme(legend.position = "none")
-
-Morphology_Root_boxplots
-
-ggsave("Morphology_Root_boxplots_FromR.pdf", Morphology_Root_boxplots, width = 5, height = 3, units = "in") 
-
+write_xlsx(Strain_fitness_subset, here("Data_input", "Strain_fitness_Plant_FromR.xlsx"))
 
 ```
 
 
+
+
+### Plant traits and morphological classification 
+
 ```{r}
-## Merge shoot biomass and EPS production ##
 
-Shoot_OD <- merge(MasterSpreadsheet_AVT_Single_strain_exp_summary, Anthrone, by = "Strain")
-## Select only importanta columns 
-#View(Shoot_OD)
-
-Shoot_OD <- Shoot_OD %>% select(Strain, Variety, Glucose_OD600, ave_shoot)
-#View(Shoot_OD)
-#View(StrainFitness_Plant_ave)
-Shoot_fitness_OD <- merge(Shoot_OD, StrainFitness_Plant_ave, by = c("Strain","Variety"))
-#View(Shoot_fitness_OD)
-
-## Merge with fitness data as well 
-## Find the average of the glucose 
-
-Shoot_fitness_OD_ave <- Shoot_fitness_OD %>%
-  group_by(Strain, Variety, ave_shoot, Morphology, Fitness_ave) %>%
-  summarise(Glucose_OD600_ave = mean(Glucose_OD600))
-
-View(Shoot_fitness_OD_ave)
-
-### Filter out 121
-Shoot_fitness_OD_ave <- Shoot_fitness_OD_ave %>% filter(Strain != "121")
-color_initial_values <- c("Dry" = "#e0ba3e",
-                  "Mucoid" = "#4eadb9")
-
-### Shoot biomass jitter
-
-Anthrone_PlantBiomass <- ggplot(data = Shoot_fitness_OD_ave, aes(x= Glucose_OD600_ave, y = ave_shoot, color = Morphology)) +
-         geom_jitter() +
-      geom_smooth(method = "lm",
-              se = FALSE,
-              color = "grey") +  
-        scale_color_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Glucose/OD600",
-    y = "Plant shoot biomass (g)"
-  )
-
-Anthrone_PlantBiomass
-
-
-ggsave("Anthrone_PlantBiomass_FromR_withoutlier.pdf", Anthrone_PlantBiomass, width = 9, height = 4, units = "in") 
-
-
-### Shoot biomass and OD620/OD600 correlations after dropping the outlier
-
-Shoot_fitness_OD_ave <- Shoot_fitness_OD_ave %>% filter(Strain != "018")
-
-### Shoot biomass jitter
-
-Anthrone_PlantBiomass <- ggplot(data = Shoot_fitness_OD_ave, aes(x= Glucose_OD600_ave, y = ave_shoot, color = Morphology)) +
-         geom_jitter() +
-      geom_smooth(method = "lm",
-              se = FALSE,
-              color = "grey") +  
-        scale_color_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Glucose/OD600",
-    y = "Plant shoot biomass (g)"
-  )
-
-Anthrone_PlantBiomass
-
-
-ggsave("Anthrone_PlantBiomass_FromR_nooutlier.pdf", Anthrone_PlantBiomass, width = 9, height = 4, units = "in") 
-
-
-
-
-## Shoot biomass boxplots 
-
-Anthrone_PlantBiomass_boxplots <- ggplot(data = Shoot_fitness_OD_ave, aes(x= Morphology, y = ave_shoot, fill = Morphology)) +
+Anthrone_PlantBiomass_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_ave, aes(x= Morphology, y = ave_shoot, fill = Morphology)) +
   geom_boxplot(outlier.shape = NA) +
          geom_jitter() +
         scale_fill_manual(values = color_initial_values) +
   facet_wrap(~Variety) +
   theme_classic() +
   labs(
-    x= "Glucose/OD600",
+    x= "Morphology",
     y = "Plant shoot biomass (g)"
-  )
+  ) +
+  theme(legend.position = "none")
 
 Anthrone_PlantBiomass_boxplots
 
-ggsave("Anthrone_PlantBiomass_boxplots.pdf", Anthrone_PlantBiomass_boxplots, width = 9, height = 4, units = "in") ## copy boxplot version 
-
-#View(Shoot_fitness_OD_ave)
-
+ggsave(here("Figures", "Morphology_Shoot_boxplots_FromR.pdf"), Anthrone_PlantBiomass_boxplots, width = 5, height = 3, units = "in") 
 
 
 
@@ -1647,10 +1270,52 @@ aov_shoot_all_table <- aov_shoot_all_table %>%
 
 write_xlsx(aov_shoot_all_table, here("Tables", "aov_shoot_all_table.xlsx"))
 
+```
+
+## Plant trait and Anthone quantification
+
+```{r}
+
+## Merge shoot biomass and EPS production ##
+
+#View(Anthrone_mean)
+#View(MasterSpreadsheet_AVT_Single_strain_exp_ave)
+#View(Anthrone_mean %>% select(-"Morphology"))
+#View(Anthrone_mean)
+Shoot_OD_ave <- merge(MasterSpreadsheet_AVT_Single_strain_exp_ave, Anthrone_mean %>% select(-"Morphology"), by = "Strain")# Remove Morphology to avoid duplication of columns
+View(Shoot_OD_ave)
+
+Shoot_OD_ave <- Shoot_OD_ave %>% select(Strain, Variety, Glucose_OD600_ave, ave_shoot, Morphology)
+
+Shoot_OD_ave_NoOutliers <- Shoot_OD_ave %>% filter(!Strain %in% c("121", "018"))
+View(Shoot_OD_ave_NoOutliers)
+#View(Shoot_OD)
+color_initial_values <- c("Dry" = "#e0ba3e",
+                  "Mucoid" = "#4eadb9")
+
+### Shoot biomass jitter
+
+Anthrone_PlantBiomass <- ggplot(data = Shoot_OD_ave_NoOutliers, aes(x= Glucose_OD600_ave, y = ave_shoot, color = Morphology)) +
+         geom_jitter() +
+      geom_smooth(method = "lm",
+              se = FALSE,
+              color = "grey") +  
+        scale_color_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Glucose/OD600",
+    y = "Plant shoot biomass (g)"
+  )
+
+Anthrone_PlantBiomass
+
+
+ggsave("Anthrone_PlantBiomass_FromR_nooutlier.pdf", Anthrone_PlantBiomass, width = 9, height = 4, units = "in") 
 
 
 
-### I will make a linear model btween shoot biomass and Glucose calculated in anthrone assay 
+### I will make a linear model between shoot biomass and Glucose calculated in anthrone assay 
 
 
 
@@ -1707,48 +1372,24 @@ write_xlsx(aov_shoot_all_GlucoseQuantity_table, here("Tables", "aov_shoot_all_ta
 
 ```
 
-
-
-
-# Liana suggestion of threshold that Dry bacteria should be Glucose/600 < 10
-
-
-
-Analysis requested by Liana, what if Dry bacteria are the ones that have < 10 by Glucose_OD600
-
-
-```{r}
-
-## Will use Anthrone_mean 
-
-#View(Anthrone_mean)
-
-Anthrone_mean_label <- Anthrone_mean %>%
-  mutate(New_morphology = if_else(
-    Glucose_OD600_ave < 10,
-    "Dry",
-    "Mucoid"
-  ))
-
-
-```
-
-
-
 ### RHIZOBIAL FITNESS INSIDE THE HOST AND MORPHOLOGIES ###
 
+## Rhizobial fitness and morphology
 
 ```{r}
 
+Shoot_fitness_OD_ave <- merge(Shoot_OD, StrainFitness_Plant_ave, by = c("Strain","Variety"))
+#View(Shoot_fitness_OD_ave)
+## Filter out strain 121 and strain 018
+
+Shoot_fitness_OD_ave_NoOutliers <- Shoot_fitness_OD_ave %>% filter(!Strain %in% c("018", "121"))
 #Replace the -Inf with -8 in Fitness_ave
 
-Shoot_fitness_OD_ave <- Shoot_fitness_OD_ave %>% 
+Shoot_fitness_OD_ave_NoOutliers <- Shoot_fitness_OD_ave_NoOutliers %>% 
   mutate(across(where(is.numeric), ~ ifelse(. == -Inf, -5, .)))
 
-View(Shoot_fitness_OD_ave)
 
-
-Anthrone_Rhizobia_fitness_jitter <- ggplot(data = Shoot_fitness_OD_ave, aes(x= Glucose_OD600_ave, y = Fitness_ave, color = Morphology)) +
+Anthrone_Rhizobia_fitness_jitter <- ggplot(data = Shoot_fitness_OD_ave_NoOutliers, aes(x= Glucose_OD600_ave, y = Fitness_ave, color = Morphology)) +
          geom_jitter() +
     geom_smooth(method = "lm",
               se = FALSE,
@@ -1763,8 +1404,81 @@ Anthrone_Rhizobia_fitness_jitter <- ggplot(data = Shoot_fitness_OD_ave, aes(x= G
 
 Anthrone_Rhizobia_fitness_jitter ## Without the outlier
 
-ggsave("Anthrone_Rhizobia_fitness_jitter.pdf", Anthrone_Rhizobia_fitness_jitter, width = 9, height = 4, units = "in") ## copy boxplot version 
+ggsave(here("Figures", "Anthrone_Rhizobia_fitness_jitter.pdf"),
+       Anthrone_Rhizobia_fitness_jitter, width = 9, height = 4, units = "in") ## copy boxplot version 
 
+
+
+### I will make a linear model btween shoot biomass and Glucose calculated in anthrone assay 
+
+
+
+aov_fitness_GlucoseQuantity <- lm(data = Shoot_fitness_OD_ave_NoOutliers, Fitness_ave ~ Variety*Glucose_OD600_ave)
+summary(aov_fitness_GlucoseQuantity)
+
+anova_fitness_GlucoseQuantity <- anova(aov_fitness_GlucoseQuantity)
+anova_fitness_GlucoseQuantity
+aov_fitness_table <- rownames_to_column(as.data.frame(anova_fitness_GlucoseQuantity), var = "Term")
+
+aov_fitness_table <- aov_fitness_table %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`)
+#View(aov_shoot_table)
+write_xlsx(aov_fitness_table, here("Tables", "aov_shoot_table_GlucoseQuantity.xlsx"))
+
+### Evaluate the slopes
+
+emm <- emtrends(aov_fitness_GlucoseQuantity, ~ Variety, var = "Glucose_OD600_ave")
+emm
+pairs(emm, adjust = "holm") #The slopes are positive for S and O but it is negative for V. 
+test(emm)
+
+### None of the slopes crosses "0" for either the lower.CL, and the upper.CL. 
+
+## Subset per variety 
+
+aov_fitness_O <- lm(data = Shoot_fitness_OD_ave_NoOutliers %>% filter(Variety == "O"), Fitness_ave ~ Glucose_OD600_ave)
+aov_fitness_O
+anova_fitness_O <- anova(aov_fitness_O)
+aov_fitness_O_table <- rownames_to_column(as.data.frame(anova_fitness_O), var = "Term")
+aov_fitness_O_table$Variety = "Oneida"
+
+
+aov_fitness_S <- lm(data = Shoot_fitness_OD_ave_NoOutliers %>% filter(Variety == "S"), Fitness_ave ~ Glucose_OD600_ave)
+aov_fitness_S
+anova_fitness_S <- anova(aov_fitness_S)
+aov_fitness_S_table <- rownames_to_column(as.data.frame(anova_fitness_S), var = "Term")
+aov_fitness_S_table$Variety = "S"
+
+
+aov_fitness_V <- lm(data = Shoot_fitness_OD_ave_NoOutliers %>% filter(Variety == "V"), Fitness_ave ~ Glucose_OD600_ave)
+aov_fitness_V
+anova_fitness_V <- anova(aov_fitness_V)
+aov_fitness_V_table <- rownames_to_column(as.data.frame(anova_fitness_V), var = "Term")
+aov_fitness_V_table$Variety = "Vernal"
+
+aov_fitness_all_table <- rbind(aov_fitness_O_table, aov_fitness_S_table, aov_fitness_V_table)
+aov_fitness_all_table <- aov_fitness_all_table %>%
+  select(Term, Variety, `Sum Sq`, `Mean Sq`, `F value`, `Pr(>F)`)
+
+aov_shoot_all_GlucoseQuantity_table <- aov_fitness_all_table %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`)
+#View(aov_shoot_all_table)
+
+write_xlsx(aov_shoot_all_GlucoseQuantity_table, here("Tables", "aov_fitness_all_table_GlucoseQuantity.xlsx"))
+
+
+
+
+```
+
+### Rhizobial fitness and glucose measurements
+
+```{r}
+### Boxplot si tiene los outliers en la medicion de glucosa
 
 Anthrone_Rhizobia_fitness_boxplot<- ggplot(data = Shoot_fitness_OD_ave, aes(x= Morphology, y = Fitness_ave, fill = Morphology)) +
   geom_boxplot(outlier.shape = NA) +
@@ -1779,7 +1493,8 @@ Anthrone_Rhizobia_fitness_boxplot<- ggplot(data = Shoot_fitness_OD_ave, aes(x= M
 
 Anthrone_Rhizobia_fitness_boxplot
 
-ggsave("Anthrone_Rhizobia_fitness_boxplot.pdf", Anthrone_Rhizobia_fitness_boxplot, width = 9, height = 4, units = "in") ## copy boxplot version 
+ggsave(here("Figures", "Anthrone_Rhizobia_fitness_boxplot.pdf"), 
+       Anthrone_Rhizobia_fitness_boxplot, width = 9, height = 4, units = "in") ## copy boxplot version 
 
 
 ### Full linear model between Variety and Morphology. Dry and Mucoid morphology are analyzed here 
@@ -1833,226 +1548,77 @@ write_xlsx(aov_fitness_all_table, here("Tables", "aov_fitness_all_table.xlsx"))
 
 
 
-### I will make a linear model btween shoot biomass and Glucose calculated in anthrone assay 
-
-
-
-aov_fitness_GlucoseQuantity <- lm(data = Shoot_fitness_OD_ave, Fitness_ave ~ Variety*Glucose_OD600_ave)
-summary(aov_fitness_GlucoseQuantity)
-
-anova_fitness_GlucoseQuantity <- anova(aov_fitness_GlucoseQuantity)
-anova_fitness_GlucoseQuantity
-aov_fitness_table <- rownames_to_column(as.data.frame(anova_fitness_GlucoseQuantity), var = "Term")
-
-aov_fitness_table <- aov_fitness_table %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`)
-#View(aov_shoot_table)
-write_xlsx(aov_fitness_table, here("Tables", "aov_shoot_table_GlucoseQuantity.xlsx"))
-
-### Evaluate the slopes
-
-emm <- emtrends(aov_fitness_GlucoseQuantity, ~ Variety, var = "Glucose_OD600_ave")
-emm
-pairs(emm, adjust = "holm") #The slopes are positive for S and O but it is negative for V. 
-test(emm)
-
-### None of the slopes crosses "0" for either the lower.CL, and the upper.CL. 
-
-## Subset per variety 
-
-aov_fitness_O <- lm(data = Shoot_fitness_OD_ave %>% filter(Variety == "O"), Fitness_ave ~ Glucose_OD600_ave)
-aov_fitness_O
-anova_fitness_O <- anova(aov_fitness_O)
-aov_fitness_O_table <- rownames_to_column(as.data.frame(anova_fitness_O), var = "Term")
-aov_fitness_O_table$Variety = "Oneida"
-
-
-aov_fitness_S <- lm(data = Shoot_fitness_OD_ave %>% filter(Variety == "S"), Fitness_ave ~ Glucose_OD600_ave)
-aov_fitness_S
-anova_fitness_S <- anova(aov_fitness_S)
-aov_fitness_S_table <- rownames_to_column(as.data.frame(anova_fitness_S), var = "Term")
-aov_fitness_S_table$Variety = "S"
-
-
-aov_fitness_V <- lm(data = Shoot_fitness_OD_ave %>% filter(Variety == "V"), Fitness_ave ~ Glucose_OD600_ave)
-aov_fitness_V
-anova_fitness_V <- anova(aov_fitness_V)
-aov_fitness_V_table <- rownames_to_column(as.data.frame(anova_fitness_V), var = "Term")
-aov_fitness_V_table$Variety = "Vernal"
-
-aov_fitness_all_table <- rbind(aov_fitness_O_table, aov_fitness_S_table, aov_fitness_V_table)
-aov_fitness_all_table <- aov_fitness_all_table %>%
-  select(Term, Variety, `Sum Sq`, `Mean Sq`, `F value`, `Pr(>F)`)
-
-aov_shoot_all_GlucoseQuantity_table <- aov_fitness_all_table %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`)
-#View(aov_shoot_all_table)
-
-write_xlsx(aov_shoot_all_GlucoseQuantity_table, here("Tables", "aov_fitness_all_table_GlucoseQuantity.xlsx"))
-
-
-
-
 ```
 
 
 
+### Co-ocurrence
+
+I have made a table that has the number of nodules that I harvested per pair, and it also has the % of mucoid, dry and mixture. I also have the barplots in this code. The Data_input is added as well. 
+
+```{r setup, include=FALSE}
+
+Individual_nodule_data <- read_excel(here("Data_input/Single_nodule_data.xlsx"))
+unique(Individual_nodule_data$Morphology)
+Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology
+#View(Individual_nodule_data)
+### Create a table that shows the proportions of each morphology in the nodules 
+
+function_pair <- function(Partner) {c(
+  Name = Partner, 
+  nrow(Individual_nodule_data %>% filter(Name == Partner)),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mucoid"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Dry"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mixture"))/nrow(Individual_nodule_data %>% filter(Name == Partner))))
+}
+
+#unique(Individual_nodule_data$Name)
+Table_mix_percentage <- rbind(function_pair("091_101"), function_pair("015_099"), function_pair("016_100"), function_pair("029_098"))
+Table_mix_percentage <- as.data.frame(Table_mix_percentage)
+Table_mix_percentage
+
+colnames(Table_mix_percentage) <- c("Pair", "Number of nodules", "% Mucoid", "% Dry", "% Mixture")
+
+Table_mix_percentage
+
+write_xlsx(Table_mix_percentage, here("Tables/TableA_FromR.xlsx"))
+
+## Total number of nodules with mixture and with single 
+
+## Total of nodules with valid assessment (taking out the contaminations). The results suggest that from 225 nodules, 83% have a single morphology, either mucoid or dry, wherease mixtures occupy around 17% of the nodules. The data broken down is in the upper part. 
+
+Total_nod_number <- nrow(Individual_nodule_data)
+Total_nod_number #225 from an initial of 70*4 = 280
 
 
-```{r}
-
-Shoot_fitness_OD_ave
-
-Shoot_fitness_OD_ave_NewLabel <- Shoot_fitness_OD_ave %>%
-  mutate(New_morphology = if_else(
-    Glucose_OD600_ave < 10,
-    "Dry",
-    "Mucoid"
-  ))
-
-
-color_initial_values <- c("Dry" = "#e0ba3e",
-                  "Mucoid" = "#4eadb9")
-
-###   Liana suggested me again to remove the outlier and see if the correlations are maintained 
-
-Shoot_fitness_OD_ave_NewLabel_OutlierRemoved <- Shoot_fitness_OD_ave_NewLabel %>% filter(Strain != "018")
-
-
-### Shoot biomass jitter
-
-Anthrone_PlantBiomass <- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= Glucose_OD600_ave, y = ave_shoot, color = New_morphology)) +
-         geom_jitter() +
-      geom_smooth(method = "lm",
-              se = FALSE,
-              color = "grey") +  
-        scale_color_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Glucose/OD600",
-    y = "Plant shoot biomass (g)"
-  )
-
-Anthrone_PlantBiomass
-
-
-ggsave("Anthrone_PlantBiomass_FromR.pdf", Anthrone_PlantBiomass, width = 9, height = 4, units = "in") 
-
-## Shoot biomass boxplots 
-
-Anthrone_PlantBiomass_boxplots <- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= New_morphology, y = ave_shoot, fill = New_morphology)) +
-  geom_boxplot(outlier.shape = NA) +
-         geom_jitter() +
-        scale_fill_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Glucose/OD600",
-    y = "Plant shoot biomass (g)"
-  )
-
-Anthrone_PlantBiomass_boxplots
-
-ggsave("Anthrone_PlantBiomass_boxplots.pdf", Anthrone_PlantBiomass_boxplots, width = 9, height = 4, units = "in") ## copy boxplot version 
-
-#View(Shoot_fitness_OD_ave)
-
-# Statistics 
-
-### Statistics 
-
-#### Statistics with the new categories 
-
-
-aov_shoot <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, ave_shoot ~ Variety*New_morphology)
-summary(aov_shoot)
-anova_shoot <- anova(aov_shoot)
-anova_shoot
-
-
-### Statistics without outlier and with Glucose quantity
-aov_shoot_GlucoseQuantity <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, ave_shoot ~ Variety*Glucose_OD600_ave)
-anova_shoot_GlucoseQuantity <- anova(aov_shoot_GlucoseQuantity)
-anova_shoot_GlucoseQuantity
-aov_shoot_table <- rownames_to_column(as.data.frame(anova_shoot_GlucoseQuantity), var = "Term")
-
-### Similar analysis to see the slope 
-
-emm <- emtrends(aov_shoot_GlucoseQuantity, ~ Variety, var = "Glucose_OD600_ave")
-emm
-pairs(emm, adjust = "holm") #The slopes are positive for S and O but it is negative for V. 
-test(emm)
+percentage_mixture <- nrow(Individual_nodule_data %>% filter(Morphology == "Mixture"))/nrow(Individual_nodule_data)*100
+percentage_mixture #16.889
+percentage_single <- nrow(Individual_nodule_data %>% filter(Morphology %in% c("Mucoid", "Dry")))/nrow(Individual_nodule_data)*100
+percentage_single #83.111
 
 
 
+## Plot
 
+color_values <- c("Mucoid" = "#4eadb9",
+                  "Dry" = "#e0ba3e",
+                  "Mixture" = "#97b47c")
 
+coocurrence <- ggplot(Individual_nodule_data, 
+       aes(x = Name, 
+           fill = Morphology)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = color_values)+
+  labs(x = "Pair", y = "Proportion")+
+  theme(axis.text = element_text(face = "bold", hjust = 0.5, size = 14)) +
+  theme_bw()
 
+coocurrence
 
-
-
-### RHIZOBIAL FITNESS
-
-Shoot_fitness_OD_ave_NewLabel <- Shoot_fitness_OD_ave_NewLabel %>% 
-  mutate(across(where(is.numeric), ~ ifelse(. == -Inf, -5, .)))
-View(Shoot_fitness_OD_ave)
-
-## Remove outlier 
-
-Shoot_fitness_OD_ave_NewLabel_OutlierRemoved <- Shoot_fitness_OD_ave_NewLabel %>% filter(Strain != "018")
-
-
-Anthrone_Rhizobia_fitness_jitter <- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= Glucose_OD600_ave, y = Fitness_ave, color = New_morphology)) +
-         geom_jitter() +
-    geom_smooth(method = "lm",
-              se = FALSE,
-              color = "grey") +  
-        scale_color_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Glucose/OD600",
-    y = "Rhizobial Relative fitness"
-  )
-
-Anthrone_Rhizobia_fitness_jitter
-
-ggsave("Anthrone_Rhizobia_fitness_jitter.pdf", Anthrone_Rhizobia_fitness_jitter, width = 9, height = 4, units = "in") ## copy boxplot version 
-
-
-Anthrone_Rhizobia_fitness_boxplot<- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= New_morphology, y = Fitness_ave, fill = New_morphology)) +
-  geom_boxplot(outlier.shape = NA) +
-         geom_jitter() +
-        scale_fill_manual(values = color_initial_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Glucose/OD600",
-    y = "Rhizobia relative fitness"
-  )
-
-Anthrone_Rhizobia_fitness_boxplot
-
-
-aov_fitness_GlucoseQuantity <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, Fitness_ave ~ Variety*Glucose_OD600_ave)
-anova_fitness_GlucoseQuantity <- anova(aov_fitness_GlucoseQuantity)
-anova_fitness_GlucoseQuantity
-
-aov_fitness <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, Fitness_ave ~ Variety*Morphology)
-anova_fitness <- anova(aov_fitness)
-anova_fitness
-aov_fitness_table <- rownames_to_column(as.data.frame(anova_fitness), var = "Term")
-
-
-
-aov_fitness <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, Fitness_ave ~ Variety*New_morphology)
-anova_fitness <- anova(aov_fitness)
-anova_fitness
+ggsave(coocurrence, 
+       filename = here("Figures" ,"coocurrence.pdf"),
+       device = "pdf",
+       height = 4, width = 6, units = "in")
 
 ```
 
@@ -2478,80 +2044,8 @@ View(wilcox_results)
 
 
 
-### Co-ocurrence
 
-I have made a table that has the number of nodules that I harvested per pair, and it also has the % of mucoid, dry and mixture. I also have the barplots in this code. The Data_input is added as well. 
-
-```{r setup, include=FALSE}
-## Document that has the single nodule data open 
-here::here() # To confirm where am I located
-
-Individual_nodule_data <- read_excel(here("Data_input/Single_nodule_data.xlsx"))
-unique(Individual_nodule_data$Morphology)
-Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology
-#View(Individual_nodule_data)
-### Create a table that shows the proportions of each morphology in the nodules 
-
-function_pair <- function(Partner) {c(
-  Name = Partner, 
-  nrow(Individual_nodule_data %>% filter(Name == Partner)),
-  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mucoid"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
-  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Dry"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
-  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mixture"))/nrow(Individual_nodule_data %>% filter(Name == Partner))))
-}
-
-#unique(Individual_nodule_data$Name)
-Table_mix_percentage <- rbind(function_pair("091_101"), function_pair("015_099"), function_pair("016_100"), function_pair("029_098"))
-Table_mix_percentage <- as.data.frame(Table_mix_percentage)
-Table_mix_percentage
-
-colnames(Table_mix_percentage) <- c("Pair", "Number of nodules", "% Mucoid", "% Dry", "% Mixture")
-
-Table_mix_percentage
-
-write_xlsx(Table_mix_percentage, here("Tables/TableA_FromR.xlsx"))
-
-## Total number of nodules with mixture and with single 
-
-## Total of nodules with valid assessment (taking out the contaminations). The results suggest that from 225 nodules, 83% have a single morphology, either mucoid or dry, wherease mixtures occupy around 17% of the nodules. The data broken down is in the upper part. 
-
-Total_nod_number <- nrow(Individual_nodule_data)
-Total_nod_number #225 from an initial of 70*4 = 280
-
-
-percentage_mixture <- nrow(Individual_nodule_data %>% filter(Morphology == "Mixture"))/nrow(Individual_nodule_data)*100
-percentage_mixture #16.889
-percentage_single <- nrow(Individual_nodule_data %>% filter(Morphology %in% c("Mucoid", "Dry")))/nrow(Individual_nodule_data)*100
-percentage_single #83.111
-
-
-
-## Plot
-
-color_values <- c("Mucoid" = "#4eadb9",
-                  "Dry" = "#e0ba3e",
-                  "Mixture" = "#97b47c")
-
-coocurrence <- ggplot(Individual_nodule_data, 
-       aes(x = Name, 
-           fill = Morphology)) + 
-  geom_bar(position = "fill") +
-  scale_fill_manual(values = color_values)+
-  labs(x = "Pair", y = "Proportion")+
-  theme(axis.text = element_text(face = "bold", hjust = 0.5, size = 14)) +
-  theme_bw()
-
-coocurrence
-
-ggsave(coocurrence, 
-       filename = here("Figures" ,"coocurrence.pdf"),
-       device = "pdf",
-       height = 4, width = 6, units = "in")
-
-```
-
-
-### EXTRA CODE 
+### EXTRA CODE #######
 
 
 ```{r}
@@ -2670,51 +2164,6 @@ pairs(emm, adjust = "holm")
 
 ```{r}
 
-### I will import the file that Sohini sent me that has the information about the strains. 
-
-StrainFitness_Plants <- read.table("/Users/mariaalejandragilpolo/Downloads/Strain Fitness_AVTSS_pangenome.txt", header = TRUE, sep = "")
-#View(StrainFitness_Plants)
-
-colnames(StrainFitness_Plants)
-## I do not like the way the name of the strains are stored because it does not match the name I am giving htem so i will change that 
-
-Strain_fitness_code <- StrainFitness_Plants %>% dplyr::select(-Variety, -Rep, -pool)
-
-
-Strain_codes <- tibble(
-  Strain_Code = names(Strain_fitness_code)
-)
-View(Strain_codes)
-
-write_xlsx(Strain_codes, "Strain_codes_FromR.xlsx")
-
-
-### I will shift this so that I have the colnames as rownames. I want a pivot longer
-
-
-StrainFitness_Plants_long <- StrainFitness_Plants %>%
-  pivot_longer(
-    cols = -c(Variety,Rep,pool),                    
-    names_to = "Strain_Code",       
-    values_to = "Fitness"            
-  )
-
-#View(StrainFitness_Plants_long)
-
-write_xlsx(StrainFitness_Plants_long, "StrainFitness_Plants_long.xlsx")
-
-Codes <- read_excel("/Users/mariaalejandragilpolo/Downloads/Strain_codes_Edited.xlsx")
-View(Codes)
-### Now merge the files that they contain the same "Strain_Code"
-
-StrainFitness_Plant <- merge(StrainFitness_Plants_long, Codes, by = "Strain_Code")
-View(StrainFitness_Plant)
-
-### Now I will make the like boxplots. Average 
-
-StrainFitness_Plant_ave <- StrainFitness_Plant %>% 
-  group_by(Strain, Variety, Morphology) %>%
-  summarise(Fitness_ave = mean(Fitness))
 
 #View(StrainFitness_Plant_ave)
 
@@ -2728,6 +2177,9 @@ ggplot(StrainFitness_Plant_ave, aes(x= Morphology, y= Fitness_ave, fill = Morpho
 
 
 ```
+
+
+
 ### Glucose production and plant fitness traits
 
 ```{r}
@@ -2765,3 +2217,419 @@ ggsave("Density_FromR.pdf", Density_morphology, width = 5, height = 3, units = "
 
 ```  
 
+
+
+### EXTRA CODE #############
+
+```{r}
+
+## Code before doing the function to make it shorter
+
+
+#### Survival Mucoid
+
+Survival_Mesocoms_Mucoid_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Mucoid") ## Extracting the values for mucoid
+Survival_Mesocoms_Mucoid_ave_NoInitial <- Survival_Mesocoms_Mucoid_ave %>% filter(Timepoint != "0") ## Filtering out the initial values
+initial_baseline_mucoid <- Survival_Mesocoms_Mucoid_ave %>% filter(Timepoint == "0") ## Extract Timepoint "0"
+
+## Treatments that need that "0" data added
+treatments_to_add_mucoid <- Survival_Mesocoms_Mucoid_ave_NoInitial %>% ## I will put it to the treatments that do not include the initial treatment
+  distinct(Treatment) %>%
+  pull(Treatment)
+
+treatments_to_add_mucoid <- unique(treatments_to_add_mucoid)
+
+baseline_rows <- purrr::map_dfr( ### This code adds the values in "0" timepoint to all of the treatments. 
+  treatments_to_add_mucoid,
+  ~ initial_baseline_mucoid %>%
+    mutate(Treatment = .x, Timepoint = "0")  
+)
+baseline_rows
+
+Survival_Mesocoms_Mucoid_ave.expanded <- bind_rows(baseline_rows, Survival_Mesocoms_Mucoid_ave_NoInitial) ## Integrate the 0wk data with the initial file 
+
+Survival_Mesocoms_Mucoid_ave.expanded$Log10Total <- log10(Survival_Mesocoms_Mucoid_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
+
+
+
+### Survival Dry
+
+Survival_Mesocoms_Dry_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Dry") ## Filter out the Dry mesocosm 
+
+Survival_Mesocoms_Dry_NoInitial_ave <- Survival_Mesocoms_Dry_ave %>% filter(Timepoint != "0") #Extract the initial values
+
+
+initial_baseline_Dry <- Survival_Mesocoms_Dry_ave %>% filter(Timepoint == "0") 
+
+treatments_to_add_Dry <- Survival_Mesocoms_Dry_NoInitial_ave %>%
+  distinct(Treatment) %>%
+  pull(Treatment)
+
+treatments_to_add_Dry <- unique(treatments_to_add_Dry)
+
+
+baseline_rows <- purrr::map_dfr(
+  treatments_to_add_Dry,
+  ~ initial_baseline_Dry %>%
+    mutate(Treatment = .x, Timepoint = "0")  
+)
+baseline_rows
+
+Survival_Mesocoms_Dry_ave.expanded <- bind_rows(baseline_rows, Survival_Mesocoms_Dry_NoInitial_ave) ## Integrate the 0wk data with the initial file 
+
+Survival_Mesocoms_Dry_ave.expanded$Log10Total <- log10(Survival_Mesocoms_Dry_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
+
+### Mixture 
+
+Survival_Mesocoms_Mixture_ave <- Survival_Mesocoms_ave %>% filter(Morphology == "Mixture") ## Filter out the Dry mesocosm 
+
+Survival_Mesocoms_Mixture_NoInitial_ave <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint != "0") #Extract the initial values
+
+initial_baseline_Mixture <- Survival_Mesocoms_Mixture_ave %>% filter(Timepoint == "0") 
+
+treatments_to_add_Mixture <- Survival_Mesocoms_Mixture_NoInitial_ave %>%
+  distinct(Treatment) %>%
+  pull(Treatment)
+
+treatments_to_add_Mixture <- unique(treatments_to_add_Mixture)
+
+
+baseline_rows <- purrr::map_dfr(
+  treatments_to_add_Mixture,
+  ~ initial_baseline_Mixture %>%
+    mutate(Treatment = .x, Timepoint = "0")  
+)
+baseline_rows
+
+Survival_Mesocoms_Mixture_ave.expanded <- bind_rows(baseline_rows, Survival_Mesocoms_Mixture_NoInitial_ave) ## Integrate the 0wk data with the initial file 
+
+Survival_Mesocoms_Mixture_ave.expanded$Log10Total <- log10(Survival_Mesocoms_Mixture_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
+
+
+## Code when working with the original Growth file that keeps th einoculum counts. I edited this file to be able to mirror the structure of Survival. 
+
+
+
+### Growth ###
+
+### Growth Mucoid ###
+
+
+Growth_Mesocoms_Mucoid_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Mucoid")
+
+Growth_Mesocoms_Mucoid_NoDrought_ForInitial_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Mucoid" & !is.na(Timepoint) & Treatment != "Drought") ## To be able to extract NOT from Drought the initial
+
+### I will remove Drought because Drought has a different starting point. 
+Growth_Mesocoms_Mucoid_NoDrought_ave <- Growth_Mesocoms_Mucoid_ave %>% filter(Treatment != "Drought" & !Timepoint %in% c("0", "Inoculum")) ## I do not have the Drought initial measurement here 
+
+initial_baseline_mucoid <- Growth_Mesocoms_Mucoid_NoDrought_ForInitial_ave %>% filter(Timepoint == "0") 
+
+## Treatments that need that "0wk" data added
+treatments_to_add_mucoid <- Growth_Mesocoms_Mucoid_NoDrought_ave %>%
+  distinct(Treatment) %>%
+  pull(Treatment)
+treatments_to_add_mucoid
+
+treatments_to_add_mucoid <- unique(treatments_to_add_mucoid)
+
+baseline_rows <- purrr::map_dfr(
+  treatments_to_add_mucoid,
+  ~ initial_baseline_mucoid %>%
+    mutate(Treatment = .x, Timepoint = "0")  
+)
+baseline_rows
+Growth_Mesocoms_Mucoid_ave.expanded <- bind_rows(baseline_rows, Growth_Mesocoms_Mucoid_NoDrought_ave) ## Create the NonDrought starting counts
+
+
+Growth_Mesocoms_Mucoid_Drought_ave <- Growth_Mesocoms_Mucoid_ave %>% filter(Treatment == "Drought" & Timepoint != "Inoculum") ## I do have the Drought initial measurement here 
+## Integrate the 0wk data with the initial file 
+
+#View(Growth_Mesocoms_Mucoid_ave.expanded)
+Growth_Mesocoms_Mucoid_ave.expanded <- bind_rows(Growth_Mesocoms_Mucoid_Drought_ave, Growth_Mesocoms_Mucoid_ave.expanded)
+#View(Growth_Mesocoms_Mucoid_ave.expanded)
+
+Growth_Mesocoms_Mucoid_ave.expanded$Log10Total <- log10(Growth_Mesocoms_Mucoid_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
+
+
+### DRY
+
+Growth_Mesocoms_Dry_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Dry")
+
+Growth_Mesocoms_Dry_NoDrought_ForInitial_ave <- Growth_Mesocoms_ave %>% filter(Morphology == "Dry" & !is.na(Timepoint) & Treatment != "Drought") ## To be able to extract NOT from Drought the initial
+
+### I will remove Drought because Drought has a different starting point. 
+Growth_Mesocoms_Dry_NoDrought_ave <- Growth_Mesocoms_Dry_ave %>% filter(Treatment != "Drought" & !Timepoint %in% c("0", "Inoculum")) ## I do have the Drought initial measurement here 
+#View(Growth_Mesocoms_Mucoid_NoDrought_ave)#Has removed Drought and also the 0 and inoculum. Looks good. 
+
+initial_baseline_Dry <- Growth_Mesocoms_Dry_NoDrought_ForInitial_ave %>% filter(Timepoint == "0") 
+#View(initial_baseline)
+initial_baseline_Dry
+## Treatments that need that "0wk" data added
+treatments_to_add_Dry <- Growth_Mesocoms_Dry_NoDrought_ave %>%
+  distinct(Treatment) %>%
+  pull(Treatment)
+treatments_to_add_Dry
+
+treatments_to_add_Dry <- unique(treatments_to_add_Dry)
+treatments_to_add_Dry
+
+baseline_rows <- purrr::map_dfr(
+  treatments_to_add_Dry,
+  ~ initial_baseline_Dry %>%
+    mutate(Treatment = .x, Timepoint = "0")  
+)
+baseline_rows
+
+Growth_Mesocoms_Dry_Drought_ave <- Growth_Mesocoms_Dry_ave %>% filter(Treatment == "Drought" & Timepoint != "Inoculum") ## I do have the Drought initial measurement here 
+#View(Growth_Mesocoms_Mucoid_Drought_ave)
+## Integrate the 0wk data with the initial file 
+
+Growth_Mesocoms_Dry_ave.expanded <- bind_rows(baseline_rows, Growth_Mesocoms_Dry_NoDrought_ave) 
+
+Growth_Mesocoms_Dry_ave.expanded <- bind_rows(Growth_Mesocoms_Dry_Drought_ave, Growth_Mesocoms_Dry_ave.expanded)
+
+
+Growth_Mesocoms_Dry_ave.expanded$Log10Total <- log10(Growth_Mesocoms_Dry_ave.expanded$Total_CFU_ave) #Calculate the log10 of the population size
+
+
+### Nodule number 
+
+Anthrone_Nod_Number_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_ave, aes(x= Morphology, y = ave_nod_total, fill = Morphology)) +
+  geom_boxplot(outlier.shape = NA) +
+         geom_jitter() +
+        scale_fill_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Nodule number"
+  ) +
+  theme(legend.position = "none")
+
+Anthrone_Nod_Number_boxplots
+
+ggsave(here("Figures", "Morphology_Nod_Number_boxplots_FromR.pdf"), Anthrone_Nod_Number_boxplots, width = 5, height = 3, units = "in") 
+
+
+### Prop Branched nod
+
+
+Morphology_Prop_Branched_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_ave, aes(x= Morphology, y = ave_prop_branched, fill = Morphology)) +
+  geom_boxplot(outlier.shape = NA) +
+         geom_jitter() +
+        scale_fill_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Proportion branched nodules"
+  ) +
+  theme(legend.position = "none")
+
+Morphology_Prop_Branched_boxplots
+
+ggsave(here("Figures", "Morphology_Prop_Branched_boxplots_FromR.pdf"), Morphology_Prop_Branched_boxplots, width = 5, height = 3, units = "in") 
+
+
+Morphology_Root_boxplots <- ggplot(data = MasterSpreadsheet_AVT_Single_strain_exp_ave, aes(x= Morphology, y = ave_root, fill = Morphology)) +
+  geom_boxplot(outlier.shape = NA) +
+         geom_jitter() +
+        scale_fill_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Root biomass (g)"
+  ) +
+  theme(legend.position = "none")
+
+Morphology_Root_boxplots
+
+ggsave(here("Figures", "Morphology_Root_boxplots_FromR.pdf"), Morphology_Root_boxplots, width = 5, height = 3, units = "in") 
+
+
+
+
+# Liana suggestion of threshold that Dry bacteria should be Glucose/600 < 10
+
+
+
+Analysis requested by Liana, what if Dry bacteria are the ones that have < 10 by Glucose_OD600
+
+
+```{r}
+
+## Will use Anthrone_mean 
+
+#View(Anthrone_mean)
+
+Anthrone_mean_label <- Anthrone_mean %>%
+  mutate(New_morphology = if_else(
+    Glucose_OD600_ave < 10,
+    "Dry",
+    "Mucoid"
+  ))
+
+
+```
+
+
+
+
+
+```{r}
+
+Shoot_fitness_OD_ave
+
+Shoot_fitness_OD_ave_NewLabel <- Shoot_fitness_OD_ave %>%
+  mutate(New_morphology = if_else(
+    Glucose_OD600_ave < 10,
+    "Dry",
+    "Mucoid"
+  ))
+
+
+color_initial_values <- c("Dry" = "#e0ba3e",
+                  "Mucoid" = "#4eadb9")
+
+###   Liana suggested me again to remove the outlier and see if the correlations are maintained 
+
+Shoot_fitness_OD_ave_NewLabel_OutlierRemoved <- Shoot_fitness_OD_ave_NewLabel %>% filter(Strain != "018")
+
+
+### Shoot biomass jitter
+
+Anthrone_PlantBiomass <- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= Glucose_OD600_ave, y = ave_shoot, color = New_morphology)) +
+         geom_jitter() +
+      geom_smooth(method = "lm",
+              se = FALSE,
+              color = "grey") +  
+        scale_color_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Glucose/OD600",
+    y = "Plant shoot biomass (g)"
+  )
+
+Anthrone_PlantBiomass
+
+
+ggsave("Anthrone_PlantBiomass_FromR.pdf", Anthrone_PlantBiomass, width = 9, height = 4, units = "in") 
+
+## Shoot biomass boxplots 
+
+Anthrone_PlantBiomass_boxplots <- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= New_morphology, y = ave_shoot, fill = New_morphology)) +
+  geom_boxplot(outlier.shape = NA) +
+         geom_jitter() +
+        scale_fill_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Glucose/OD600",
+    y = "Plant shoot biomass (g)"
+  )
+
+Anthrone_PlantBiomass_boxplots
+
+ggsave("Anthrone_PlantBiomass_boxplots.pdf", Anthrone_PlantBiomass_boxplots, width = 9, height = 4, units = "in") ## copy boxplot version 
+
+#View(Shoot_fitness_OD_ave)
+
+# Statistics 
+
+### Statistics 
+
+#### Statistics with the new categories 
+
+
+aov_shoot <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, ave_shoot ~ Variety*New_morphology)
+summary(aov_shoot)
+anova_shoot <- anova(aov_shoot)
+anova_shoot
+
+
+### Statistics without outlier and with Glucose quantity
+aov_shoot_GlucoseQuantity <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, ave_shoot ~ Variety*Glucose_OD600_ave)
+anova_shoot_GlucoseQuantity <- anova(aov_shoot_GlucoseQuantity)
+anova_shoot_GlucoseQuantity
+aov_shoot_table <- rownames_to_column(as.data.frame(anova_shoot_GlucoseQuantity), var = "Term")
+
+### Similar analysis to see the slope 
+
+emm <- emtrends(aov_shoot_GlucoseQuantity, ~ Variety, var = "Glucose_OD600_ave")
+emm
+pairs(emm, adjust = "holm") #The slopes are positive for S and O but it is negative for V. 
+test(emm)
+
+
+
+
+
+
+
+
+
+### RHIZOBIAL FITNESS
+
+Shoot_fitness_OD_ave_NewLabel <- Shoot_fitness_OD_ave_NewLabel %>% 
+  mutate(across(where(is.numeric), ~ ifelse(. == -Inf, -5, .)))
+View(Shoot_fitness_OD_ave)
+
+## Remove outlier 
+
+Shoot_fitness_OD_ave_NewLabel_OutlierRemoved <- Shoot_fitness_OD_ave_NewLabel %>% filter(Strain != "018")
+
+
+Anthrone_Rhizobia_fitness_jitter <- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= Glucose_OD600_ave, y = Fitness_ave, color = New_morphology)) +
+         geom_jitter() +
+    geom_smooth(method = "lm",
+              se = FALSE,
+              color = "grey") +  
+        scale_color_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Glucose/OD600",
+    y = "Rhizobial Relative fitness"
+  )
+
+Anthrone_Rhizobia_fitness_jitter
+
+ggsave("Anthrone_Rhizobia_fitness_jitter.pdf", Anthrone_Rhizobia_fitness_jitter, width = 9, height = 4, units = "in") ## copy boxplot version 
+
+
+Anthrone_Rhizobia_fitness_boxplot<- ggplot(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, aes(x= New_morphology, y = Fitness_ave, fill = New_morphology)) +
+  geom_boxplot(outlier.shape = NA) +
+         geom_jitter() +
+        scale_fill_manual(values = color_initial_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Glucose/OD600",
+    y = "Rhizobia relative fitness"
+  )
+
+Anthrone_Rhizobia_fitness_boxplot
+
+
+aov_fitness_GlucoseQuantity <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, Fitness_ave ~ Variety*Glucose_OD600_ave)
+anova_fitness_GlucoseQuantity <- anova(aov_fitness_GlucoseQuantity)
+anova_fitness_GlucoseQuantity
+
+aov_fitness <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, Fitness_ave ~ Variety*Morphology)
+anova_fitness <- anova(aov_fitness)
+anova_fitness
+aov_fitness_table <- rownames_to_column(as.data.frame(anova_fitness), var = "Term")
+
+
+
+aov_fitness <- lm(data = Shoot_fitness_OD_ave_NewLabel_OutlierRemoved, Fitness_ave ~ Variety*New_morphology)
+anova_fitness <- anova(aov_fitness)
+anova_fitness
+
+```
+
+
+
+```

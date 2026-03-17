@@ -44,8 +44,196 @@ meta_raw
 
 ADD MY EDITIONS TO SOHINI'S TREE
 
+
+After Liana's suggestions. She suggested me to work with Sohini's tree and not to filter out AVT 121 (Did not grow in RDM liquid), AVT18 (overproduced glucose), and 067 that I forgot to streak. I will just put NA or something like that in the plots
 ```{r}
-### I am going to remove from the tree strains 121 that never grew, 018 that produced too much EPS, and strain 067 that I did not included in the anthrone assessment. 
+
+#########
+
+
+### THESE FILES COME FROM MY ANALYSIS 
+### To join with the meta data is have the new names to replace the AVT with my label. 
+
+### The excel file to change the codes that Sohini uses 
+
+Codes <- read_excel("/Users/mariaalejandragilpolo/Downloads/Strain_codes_ForTree.xlsx") #Has all the 117 strains
+#View(Codes)
+
+## Change the meta column name "Strain" for "Strain_Code"
+
+
+### Change the Name of the Strain column for "Strain_Code" and keep that title consistant. 
+Anthrone_mean_OD_ForTree_ave <- Anthrone_mean %>% dplyr::rename(Strain_Code = Strain) %>% dplyr::select(-"Morphology") #Remove Morphology from Anthrone mean that does no have the 
+
+Codes_glucose <- left_join(Codes, Anthrone_mean_OD_ForTree_ave, by = "Strain_Code")
+View(Codes_glucose)
+
+####
+
+#View(Codes_glucose)
+meta_tree <- meta_raw %>%
+  select(-any_of("label")) %>%
+  left_join(
+    Codes_glucose %>%
+      select(-any_of("label")) %>%
+      select(Strain, Strain_Code, Pairs, Glucose_OD600_ave),
+    by = "Strain"
+  ) %>%
+  mutate(
+    label = Strain,
+    Morphology = recode(Morphology,
+                        "R" = "Mucoid",
+                        "P" = "Dry"),
+    Morphology = factor(Morphology, levels = c("Mucoid", "Dry")),
+    pair_status = ifelse(is.na(Pairs), "No pair", "Paired")
+  ) #%>%
+#  filter(!label %in% tips_to_remove) ### Remove these from the metadata
+
+
+meta_tree_plot <- meta_tree %>%
+  select(label, Strain_Code, Morphology, Pairs, Glucose_OD600_ave) %>%
+  mutate(
+    Morphology = factor(Morphology, levels = c("Mucoid", "Dry")),
+    Pairs = ifelse(is.na(Pairs), "No pair", as.character(Pairs)),
+    Pairs = factor(Pairs),
+    Pair_label = ifelse(Pairs == "No pair", "", as.character(Pairs))
+  )
+
+# Morphology
+morph_cols <- c(
+  "Mucoid" = "#4eadb9",
+  "Dry" = "#e0ba3e"
+)
+
+# Pair
+
+pair_levels <- levels(meta_tree_plot$Pairs)
+
+pair_cols <- setNames(
+  grDevices::hcl.colors(length(pair_levels), palette = "Dynamic"),
+  pair_levels
+)
+
+if ("No pair" %in% names(pair_cols)) {
+  pair_cols["No pair"] <- "white"
+}
+
+
+
+### I run into a problem with duplications of columns with meta_tree so I am subsetting it 
+label_df <- meta_tree_plot %>%
+  select(label, Strain_Code)
+
+p <- ggtree(tree, branch.length = "none") %<+% label_df +
+  geom_tiplab(aes(label = Strain_Code), size = 2.8, offset = 0.02) +
+  theme_tree2() +
+  xlim_tree(4)
+
+
+p
+
+## Add the morphology
+p <- p +
+  geom_fruit(
+    data = meta_tree_plot %>% select(label, Morphology),
+    geom = geom_tile,
+    mapping = aes(y = label, x = "Morphology", fill = Morphology),
+    width = 1,
+    offset = 0.04,
+    inherit.aes = FALSE,
+    color = "white",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(
+    values = morph_cols,
+    name = "Morphology"
+  )
+
+
+## Add glucose
+p <- p +
+  ggnewscale::new_scale_fill() +
+  geom_fruit(
+    data = meta_tree_plot %>% select(label, Glucose_OD600_ave),
+    geom = geom_tile,
+    mapping = aes(y = label, x = "Glucose", fill = Glucose_OD600_ave),
+    width = 1,
+    offset = 0.03,
+    inherit.aes = FALSE,
+        color = "white",
+    linewidth = 0.2
+  ) +
+  scale_fill_gradient2(
+    low = "#d8031c",
+    mid = "#f7f7f7",
+    high = "#01016f",
+    midpoint = median(meta_tree_plot$Glucose_OD600_ave, na.rm = TRUE),
+    name = "Glucose"
+  )
+
+
+
+
+
+## Add the pair
+p <- p +
+  ggnewscale::new_scale_fill() +
+  geom_fruit(
+    data = meta_tree_plot %>% select(label, Pairs),
+    geom = geom_tile,
+    mapping = aes(y = label, x = "Pair", fill = Pairs),
+    width = 1,
+    offset = 0.03,
+    inherit.aes = FALSE,
+    color = "white",
+    linewidth = 0.25
+  ) +
+  scale_fill_manual(
+    values = pair_cols,
+    name = "Pair"
+  ) +
+  geom_fruit(
+    data = meta_tree_plot %>% select(label, Pair_label),
+    geom = geom_text,
+    mapping = aes(y = label, x = "Pair", label = Pair_label),
+    inherit.aes = FALSE,
+    size = 2.2,
+    color = "black"
+  )
+
+ggsave(
+  "AVT_tree_all.pdf_withlegends.pdf",
+  plot = p,
+  width = 8,
+  height = 15,
+  units = "in"
+)
+
+#no legends
+p <- p + theme(legend.position = "none")
+p
+ggsave(
+  "AVT_tree_all.pdf",
+  plot = p,
+  width = 10,
+  height = 20,
+  units = "in"
+)
+
+
+
+
+
+
+
+```
+
+
+
+
+
+```{r}
+### Liana suggested me not to remove strains 121 (did not grow in RDM), 018 (Overproduced glucose), and 067 (Forgot to streak) from the main tree sohini did but just put some mark in the Figure 1.  
 
 tips_to_remove <- c("AVT121", "AVT18", "AVT67")
 tree_filt <- drop.tip(tree, tips_to_remove)
@@ -235,6 +423,8 @@ ggsave(
 
 
 
+```
+```{r}
 
 
 
