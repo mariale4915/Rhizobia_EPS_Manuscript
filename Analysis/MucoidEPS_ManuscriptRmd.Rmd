@@ -1,0 +1,1848 @@
+---
+title: "MucoidEPS_Manuscript"
+author: "Maria Alejandra Gil Polo"
+date: "2026-06-23"
+output: html_document
+---
+
+#### Load packages ####
+
+
+```{r}
+library(readxl)
+library(ggbeeswarm)
+library(glmmTMB)
+library(here)
+library(ggplot2) 
+library(readxl)
+library(writexl)
+library(tidyverse)
+library(dplyr)
+library(lme4)
+library(dplyr)
+library(writexl)
+library(emmeans)
+library(tidyverse)
+library(here)
+library(ggplot2)
+library(remotes)
+library(lmerTest)
+library(ggridges)
+library(ggbeeswarm)
+library(scales)
+library(broom)
+library(dplyr)
+library(writexl)
+
+
+```
+
+#### Setting up the color pallette ####
+
+```{r}
+
+color_values <- c("Mucoid" = "#4eadb9",
+                  "Dry" = "#e0ba3e",
+                  "Mixture" = "#97b47c")
+
+set.seed(123)
+```
+
+### Co-occurrence ### 
+
+I run an experiment using 4 pairs of strains, and co-inoculated them in 7 reps per plant. The alfalfa variety I used was Oneida. The pairs used were 091 - 101, 015 - 099, 016 - 100 and 029 - 098. The mucoid strains were 0.15, 029, 016, 091 and the dry ones are 098, 099, 100, 101. The pair refers to a co-isolated pair. I later selected 10 nodules per plant, sterilized them, crushed them, and streaked them. Then I observed whether the morphology the nodule was showing was Mucoid, Dry or a Mixture of both of them together. There should be around 70 nodules per Pair.
+
+```{r}
+
+
+Individual_nodule_data <- read.csv(here("Data_input", "SingleNodule_Ocurrence_data.csv")) #Create this file again I think I deleted it
+Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology
+#View(Individual_nodule_data)
+### Create a table that shows the proportions of each morphology in the nodules 
+
+function_pair <- function(Partner) {c(
+  Name = Partner, 
+  nrow(Individual_nodule_data %>% filter(Name == Partner)),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mucoid"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Dry"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
+  sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mixture"))/nrow(Individual_nodule_data %>% filter(Name == Partner))))
+}
+
+Table_mix_percentage <- rbind(function_pair("091_101"), function_pair("015_099"), function_pair("016_100"), function_pair("029_098"))
+Table_mix_percentage <- as.data.frame(Table_mix_percentage)
+Table_mix_percentage
+
+colnames(Table_mix_percentage) <- c("Pair", "Number of nodules", "% Mucoid", "% Dry", "% Mixture")
+
+Table_mix_percentage
+
+write_xlsx(Table_mix_percentage, here("Tables", "EPS_TableS3_FromR.xlsx"))
+
+## Total number of nodules with mixture and with single 
+
+## Total of nodules with valid assessment (taking out the contaminations). The results suggest that from 225 nodules, 83% have a single morphology, either mucoid or dry, wherease mixtures occupy around 17% of the nodules. The data broken down is in the upper part. 
+
+
+## Plot
+
+coocurrence <- ggplot(Individual_nodule_data, 
+       aes(x = Name, 
+           fill = Morphology)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = color_values)+
+  labs(x = "Pair", y = "Proportion")+
+    theme_classic() +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid.minor       = element_blank(),
+    panel.grid.major = element_blank(),
+#    plot.background  = element_rect(fill = "white", color = NA),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black")) 
+
+coocurrence
+
+ggsave(coocurrence, 
+       filename = here("Figures" ,"EPS_FigureS2_FromR.pdf"),
+       device = "pdf",
+       height = 4, width = 6, units = "in")
+
+```
+
+
+### Exopolysaccharide description ###
+
+Anthrone assay 
+
+For the Anthrone assay experiment, I grew 116 strains of Sinorhizobium meliloti in RDM liquid media for 8 days. Then I centrifuged the samples, and recovered teh supernatant to run the anthrone assay, and resuspended the pellet in saline solution to measure the OD600 so I could normalize data to the OD600. 
+
+```{r}
+
+Oct2025_AnthroneOD620 <- read_excel(here("Data_input", "AnthroneOD620.xlsx"))
+
+## Remove the Blanks labeled as "Bla" from the OD620 measurements. 
+
+Anthrone620 <- Oct2025_AnthroneOD620 %>%
+  mutate(OD620_Adj = OD620 - mean(OD620[Name == "Blank"], na.rm = TRUE))
+
+## Calculate the amount of glucose produced by each strain using the calibration curve. I created a calibration curve using 
+
+Glucose_standards <- Anthrone620 %>% filter(Morphology == "Calibration") ## Filter Morphology > Calibration 
+
+
+Glucose_standards <- Glucose_standards %>%
+  mutate(Glucose_quantity = case_when(
+    Strain == "Glu1" ~ 20, #ug
+    Strain == "Glu2" ~ 10, #ug
+    Strain == "Glu3" ~ 5, #ug
+    Strain == "Glu4" ~ 2.5, #ug
+    Strain == "Glu5" ~ 1.25, #ug
+    Strain == "Glu6" ~ 0.625, #ug
+    Strain == "Glu7" ~ 0.3125, #ug
+    Strain == "Glu8" ~ 0.15625, #ug
+    TRUE ~ NA_real_  # Default case if no match is found
+  ))
+
+
+## I will extract the coefficients to make a formula and apply that to my current values 
+
+model <- lm(Glucose_quantity ~ OD620_Adj, data= Glucose_standards) 
+summary(model)
+
+coefficients <- coef(model)
+
+b_intercept <- coefficients["(Intercept)"]
+b_intercept #  -0.2920703 
+a_slope <- coefficients["OD620_Adj"]
+a_slope #50.59358
+
+## Filter out the Blank and the ones that have Glu but are not useful for the calibration
+
+Anthrone620_strains <- Anthrone620 %>% filter(!(Strain == "Bla" | grepl("Glu", Strain)))
+Anthrone620_strains                                                          
+
+OD620_strains <- Anthrone620_strains %>% 
+  mutate(Glucose_quantity = a_slope*OD620_Adj + b_intercept)
+
+### Calculate the OD600
+
+Oct2025_AnthroneOD600 <- read_excel(here("Data_input", "AnthroneOD600.xlsx"))
+### MARIA DON'T FORGET TO MAKE THE CONVERSION AFTER ACCOUNT FOR THE DILUTION 
+
+Anthrone600 <- Oct2025_AnthroneOD600 %>%
+  mutate(OD600_Adj = OD600 - mean(OD600[Name == "Blank"], na.rm = TRUE))
+
+Anthrone600_strains <- Anthrone600 %>% filter(Name != "Blank")
+
+Anthrone600_strains <-  Anthrone600_strains %>% 
+  group_by(Name) %>%
+  summarise(OD600_Adj_mean = mean(OD600_Adj)) ## Since I have two measurements per rep, I will find the mean od the OD600_Adj
+
+Anthrone600_strains
+
+### I will now merge the files 
+
+Anthrone <- merge(OD620_strains, Anthrone600_strains, by = "Name")
+Anthrone <- Anthrone %>%
+  mutate(
+    Strain = as.character(Strain),
+    Name   = as.character(Name)
+  )
+
+
+Anthrone_complete <- Anthrone %>%
+  mutate(Glucose_OD600 = Glucose_quantity/OD600_Adj_mean)
+Anthrone_complete
+#### Filtering ####
+
+## Strain 121 did not grow in the RDM media, therefore I will remove them from the file 
+
+Anthrone_complete <- Anthrone_complete %>% filter(Strain != "121")
+
+write_xlsx(Anthrone_complete, here("Tables", "Anthrone_complete.xlsx"))
+
+
+## Calculate the mean of each strain and not only of each tube (technical replicate)
+Anthrone_mean <- Anthrone_complete %>%
+  group_by(Strain, Morphology) %>%
+  summarise(Glucose_OD600_ave = mean(Glucose_OD600))
+
+write_xlsx(Anthrone_mean, here("Tables", "Anthrone_mean.xlsx"))
+
+
+#### Anthrone per pair - Figure ####
+
+## Open the file that has the description of the strains and subset the strains that are within a Pair 
+
+Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype.xlsx"))
+
+
+Strain_used_pair <- Strains %>% filter(!is.na(Pairs)) %>% select(-"Morphology") ## Subset the strains that have a pair for this analysis and filter out Morphology column so it doesn't get duplicated when we do the "Anthrone_complete"
+Strain_used_pair
+
+### Merge the dataframe with the Anthrone data
+
+Pair_Anthrone_complete <- left_join(Strain_used_pair, Anthrone_complete, by = "Strain") 
+Pair_Anthrone_complete
+
+Pair_Anthrone_complete$Pairs <- factor(Pair_Anthrone_complete$Pairs) #Make sure the Pairs are read as characters
+
+
+Pairs_anthrone <- ggplot(Pair_Anthrone_complete, aes(x = Pairs, y = Glucose_OD600, color = Morphology)) +
+  geom_jitter() +
+  geom_line(aes(group = Pairs)) +
+  scale_x_discrete(limits = unique(Pair_Anthrone_complete$Pairs)) +
+  scale_color_manual(values = color_values) +
+  theme_minimal() +
+    labs(
+    x = "Pairs",
+    y = "Glucose/OD600") +
+  coord_flip() +
+    theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black")
+    )
+
+
+Pairs_anthrone
+
+ggsave(Pairs_anthrone, file = here("Figures", "EPS_FigureS3_FromR.pdf"), width = 10, height = 10, units = "in")
+
+#### Anthrone per pair - Stats ####
+
+
+model1_raw <- lmer(Glucose_OD600 ~ Morphology + (1|Pairs), data = Pair_Anthrone_complete) ## This analysis is done in the file that works with only the Pairs
+model1_raw
+anova1 <- anova(model1_raw)
+anova1
+anova1 <- rownames_to_column(as.data.frame(anova1), var = "Term")
+anova1
+colnames(anova1)
+
+anova_TableS3 <- anova1 %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, - NumDF, - DenDF)
+anova_TableS3
+
+write_xlsx(anova_TableS3, here("Tables", "EPS_TableS4_FromR.xlsx"))
+
+
+
+#### Anthrone - whole collection ####
+
+### To determine the amount of EPS produced by each category in the whole collection 
+
+Pair_Anthrone_mean <- left_join(Strain_used_pair, Anthrone_mean, by = "Strain")
+Pair_Anthrone_mean
+
+Histo_balls <- ggplot(Anthrone_mean, aes(x = Glucose_OD600_ave)) +
+  geom_dotplot(aes(fill = Morphology)) +
+  labs(title = "Distribution of EPS production in natural isolates", x = "Glucose/OD600") +
+  scale_fill_manual(values = color_values)+
+  theme_classic() +
+    theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    axis.title.y     = element_blank(),
+    axis.text.y      = element_blank(),
+    axis.ticks.y     = element_blank(),
+    axis.line.y      = element_blank(),
+    legend.position  = "none")
+Histo_balls
+
+
+ggsave(Histo_balls, file = here("Figures", "EPS_FigureS4_FromR.pdf"), width = 10, height = 8, units = "in")
+
+#### Anthrone - whole collection - stats ####
+
+
+aov2 <- aov(data = Anthrone_mean, Glucose_OD600_ave ~ Morphology)
+aov2
+anova2 <- anova(aov2)
+anova2
+anova2 <- rownames_to_column(as.data.frame(anova2), var = "Term")
+
+anova2_Table <- anova2 %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`)
+
+write_xlsx(anova2_Table, here("Tables", "EPS_TableS5_FromR.xlsx"))
+```
+
+
+
+
+### Soil ###
+
+Open files
+
+```{r}
+
+soil_data <- read_excel(here("Data_input", "Soil_Survival&Growth.xlsx"))
+soil_data
+soil_data <- soil_data %>% filter(!is.na(Volume_ul)) #Filtering out the ones that were not assessed
+soil_data <- soil_data %>% filter(Rep_tube != "s") #Filtering out the "sacrificed" plants
+
+
+soil_data$Colonies_Dry <- as.numeric(soil_data$Colonies_Dry)
+soil_data$Colonies_Mucoid <- as.numeric(soil_data$Colonies_Mucoid)
+soil_data$Dilution <- as.numeric(soil_data$Dilution)
+soil_data$Volume_ul <- as.numeric(soil_data$Volume_ul)
+
+## Calculate CFUs
+
+soil_data <- soil_data %>%
+  mutate(
+    Dry_CFU_Total = Colonies_Dry*10^5*10^(Dilution -1)/Volume_ul,
+    Mucoid_CFU_Total = Colonies_Mucoid*10^5*10^(Dilution -1)/Volume_ul,
+    Total_CFU = Dry_CFU_Total + Mucoid_CFU_Total,
+    Percentage_Dry = Dry_CFU_Total*100/Total_CFU
+  )
+#View(soil_data)
+
+
+## I will give different shapes to timepoints and colors to treatments. 
+
+mycols<-data.frame(Treatment=c("22 °C", "32 °C","4 °C", "Drought"), cols=c("#999999","#D55E00", "#882255", "#56B4E9"))
+mycols$Treatment <- factor(mycols$Treatment, ordered=TRUE) 
+mycols <- setNames(mycols$cols, mycols$Treatment)
+
+## For survival
+
+myshapes_survival<-data.frame(Timepoint=c("3 months","6 months","12 months"),shapes=c(16, 5, 12))
+myshapes_survival$Timepoint <- factor(myshapes_survival$Timepoint, ordered = TRUE)
+myshapes_survival <- setNames(myshapes_survival$shapes, myshapes_survival$Timepoint)
+
+## For growth
+
+myshapes_growth<-data.frame(Timepoint= c("7 days", "14 days", "21 days", "42 days"),shapes=c(1, 2, 3, 4))
+myshapes_growth$Timepoint <- factor(myshapes_growth$Timepoint, ordered = TRUE)
+myshapes_growth <- setNames(myshapes_growth$shapes, myshapes_growth$Timepoint)
+
+
+#### Expand the "initial" values to the treatments ####
+
+# I measured the initial values from the tubes inoculated with the Mucoid, Dry and Mixed population. The values were different between Growth and Survival, therefore I will divide them in two. 
+
+### For survival 
+
+soil_survival <- soil_data %>% filter(Condition == "Survival")
+
+
+expand_survival_baseline <- function(data, morphology_value) {
+  
+  dat_morph <- data %>%
+    filter(Population_Morphology == morphology_value)
+  
+  dat_no_initial <- dat_morph %>%
+    filter(Timepoint != "0")
+  
+  initial_baseline <- dat_morph %>%
+    filter(Timepoint == "0")
+  
+  treatments_to_add <- dat_no_initial %>%
+    distinct(Treatment) %>%
+    pull(Treatment) %>%
+    unique()
+  
+  baseline_rows <- purrr::map_dfr(
+    treatments_to_add,
+    ~ initial_baseline %>%
+      mutate(Treatment = .x, Timepoint = "0")
+  )
+  
+  expanded <- bind_rows(baseline_rows, dat_no_initial) %>%
+    mutate(Log10Total = log10(Total_CFU))
+  
+  return(expanded)
+}
+
+
+soil_survival
+Survival_Mesocoms_Mucoid.expanded  <- expand_survival_baseline(soil_survival, "Mucoid")
+Survival_Mesocoms_Dry.expanded     <- expand_survival_baseline(soil_survival, "Dry")
+Survival_Mesocoms_Mixture.expanded <- expand_survival_baseline(soil_survival, "Mixture")
+
+### Merge all the files Survival
+
+Survival_Mesocosm.expanded <- rbind(Survival_Mesocoms_Mucoid.expanded, Survival_Mesocoms_Dry.expanded, Survival_Mesocoms_Mixture.expanded)
+
+
+#View(Survival_Mesocoms_Mucoid.expanded) Looks correct 
+
+### For growth
+
+soil_growth <- soil_data %>% filter(Condition == "Growth")
+
+
+expand_growth_baseline <- function(data, morphology_value) {
+  
+  dat_morph <- data %>%
+    filter(Population_Morphology == morphology_value)
+  
+  dat_no_initial <- dat_morph %>%
+    filter(Timepoint != "0")
+  
+  initial_baseline <- dat_morph %>%
+    filter(Timepoint == "0")
+  
+  treatments_to_add <- dat_no_initial %>%
+    distinct(Treatment) %>%
+    pull(Treatment) %>%
+    unique()
+  
+  baseline_rows <- purrr::map_dfr(
+    treatments_to_add,
+    ~ initial_baseline %>%
+      mutate(Treatment = .x, Timepoint = "0")
+  )
+  
+  expanded <- bind_rows(baseline_rows, dat_no_initial) %>%
+    mutate(Log10Total = log10(Total_CFU))
+  
+  return(expanded)
+}
+
+
+Growth_Mesocoms_Mucoid.expanded  <- expand_growth_baseline(soil_growth, "Mucoid")
+Growth_Mesocoms_Dry.expanded     <- expand_growth_baseline(soil_growth, "Dry")
+Growth_Mesocoms_Mixture.expanded <- expand_growth_baseline(soil_growth, "Mixture")
+
+## Merge all the files for Growth: 
+
+Growth_Mesocosm.expanded <- rbind(Growth_Mesocoms_Mucoid.expanded, Growth_Mesocoms_Dry.expanded, Growth_Mesocoms_Mixture.expanded)
+
+## Now merge survival and growth 
+
+soil.expanded <- rbind(Growth_Mesocosm.expanded, Survival_Mesocosm.expanded)
+
+
+### Now calculate the average of the expanded data ###
+
+
+soil.expanded_ave <- soil.expanded %>% ## Calculating the averages
+  group_by(Name, Treatment, Population_Morphology, Timepoint, Rep_tube, Condition) %>%
+  summarise(
+    Dry_CFU_Total_ave   = mean(Dry_CFU_Total,   na.rm = TRUE),
+    Mucoid_CFU_Total_ave = mean(Mucoid_CFU_Total, na.rm = TRUE),
+    Total_CFU_ave       = mean(Total_CFU,       na.rm = TRUE),
+    Percentage_Dry_ave  = mean(Percentage_Dry,  na.rm = TRUE),
+    Log10Total_ave = mean(Log10Total, na.rm = TRUE),
+    .groups = "drop"
+  )
+soil.expanded_ave
+
+
+ 
+### Constructing the files for the Population size analysis ###
+
+#### Survival ####
+
+popsize.median_Survival <- Survival_Mesocosm.expanded %>% 
+  group_by(Timepoint, Treatment, Population_Morphology) %>% 
+  summarise(
+    median = median(Log10Total, na.rm = TRUE),
+    min    = min(Log10Total, na.rm = TRUE),
+    max    = max(Log10Total, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+popsize.median_Survival
+
+popsize.median_Survival <- popsize.median_Survival %>%
+  mutate(
+    Condition  = "Survival",
+    Timepoint  = factor(Timepoint,
+                        levels = c("0", "3 months", "6 months", "12 months"))  
+  )
+
+#### Growth ####
+
+
+popsize.median_Growth<- Growth_Mesocosm.expanded %>%
+  group_by(Timepoint, Treatment, Population_Morphology) %>% 
+  summarise(
+    median = median(Log10Total, na.rm = TRUE),
+    min    = min(Log10Total, na.rm = TRUE),
+    max    = max(Log10Total, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+popsize.median_Growth <- popsize.median_Growth %>%
+  mutate(
+    Condition  = "Growth",
+    Timepoint  = factor(Timepoint,
+                        levels = c("0", "7 days", "14 days", "21 days", "42 days"))  
+  )
+
+## I will put together the data for the population size for both Growth and Survival: 
+
+popsize.median_All <- dplyr::bind_rows(popsize.median_Survival,
+                                       popsize.median_Growth)
+
+
+```
+
+#### Mixture ####
+
+##### Mixture - Growth #####
+
+###### Population size ######
+
+```{r}
+
+### Figure 3 A ###
+
+Growth_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Growth", Population_Morphology == "Mixture"),
+       aes(x = Timepoint, y = median,
+           color = Treatment,
+           linetype = Population_Morphology,
+           group = interaction(Treatment, Population_Morphology))) +   
+  geom_point() +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = min, ymax = max), width = 0.05) +
+  scale_color_manual(values = mycols) +
+  scale_linetype_manual(values = c("Mixture" = "dotted")) +
+  xlab("Timepoint") +
+  ylab("Log10(CFU/mesocosm)") +
+  scale_y_log10() +
+    coord_cartesian(ylim = c(3, 10)) +
+#  facet_wrap(~Condition,  scales = "free_x") +
+  theme_minimal(base_size = 12) +
+  theme(
+    text = element_text(family = "Helvetica", color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    legend.position = "none"
+  )
+
+
+Growth_Mixture
+
+ggsave(Growth_Mixture, 
+       filename = here("Figures" ,"EPS_Figure3A_FromR.pdf"),
+       device = "pdf",
+       height = 4, width = 5, units = "in")
+
+
+```
+
+
+###### Percentage of Dry bacteria ######
+
+```{r}
+
+##Account for the percentage of dry bacteria 
+
+### Make a table
+unique(soil.expanded_ave$Treatment)
+### 32 C
+View(soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
+View(soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
+
+```
+
+
+```{r}
+
+Growth_Mesocosm_Mixture_initial_ave <- soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture" & Timepoint == "0")
+
+Initial_ave_growth <- Growth_Mesocosm_Mixture_initial_ave %>% 
+  ungroup() %>% 
+  summarise(Initial_ave_growth = mean(Percentage_Dry_ave, na.rm = TRUE)) %>% 
+  pull(Initial_ave_growth)
+
+Initial_ave_growth
+
+
+Growth_DryPercentage <- ggplot(data = soil.expanded_ave %>% 
+                                filter(Condition == "Growth" & Population_Morphology == "Mixture" & Timepoint != "0") %>%
+                                mutate(Timepoint = factor(Timepoint, levels = c("7 days", "14 days", "21 days", "42 days"))), 
+                                aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
+      stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
+  scale_shape_manual(values = myshapes_growth) +
+  scale_fill_manual(values = mycols) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
+  geom_hline(yintercept= Initial_ave_growth, linetype="dashed", color="black", size=1) +
+  labs(x = "Treatment", y = "Percentage of Dry bacteria") +
+  theme_classic() +
+  theme(
+    text = element_text(family = "Helvetica", color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    legend.position = "none")
+
+Growth_DryPercentage
+
+
+ggsave(Growth_DryPercentage, 
+       filename = here("Figures","EPS_Figure3C_FromR.pdf"), 
+       device = "pdf", 
+       height = 4, width = 5, units = "in")
+
+
+### Statistics
+
+aov_Mixed_PercDry_Growth <- aov(Percentage_Dry_ave ~ Treatment*Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Growth" & Population_Morphology == "Mixture")) ## In the ANOVA I am taking into account the timepoint 0 
+anova_Mixed_PercDry_Growth <- anova(aov_Mixed_PercDry_Growth) #Calculate the anova
+
+anova_Mixed_PercDry_Growth <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Growth), var = "Term") #For table formating
+anova_Mixed_PercDry_Growth
+
+## Aesthetics
+
+anova_Mixed_PercDry_Growth <- anova_Mixed_PercDry_Growth %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+write_xlsx(anova_Mixed_PercDry_Growth, here("Tables", "EPS_anova_Mixed_PercDry_Growth_FromR.xlsx"))
+
+
+## I will subset the each treatment and see what timepoints statistically have higher percentage of dry bacteria
+
+### 32 C ###
+
+aov_Mixed_PercDry_Growth_32C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "32 °C")) 
+summary(aov_Mixed_PercDry_Growth_32C)
+anova_Mixed_PercDry_Growth_32C <- anova(aov_Mixed_PercDry_Growth_32C)
+
+anova_Mixed_PercDry_Growth_32C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Growth_32C), var = "Term")
+anova_Mixed_PercDry_Growth_32C
+
+anova_Mixed_PercDry_Growth_32C <- anova_Mixed_PercDry_Growth_32C %>%
+  mutate(Treatment = "32 °C") %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+#write_xlsx(anova_Mixed_PercDry_Growth_32C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Growth_32C_FromR.xlsx"))
+
+### Tukey test
+
+Tukey_Mixed_PercDry_Growth_32C <- TukeyHSD(aov_Mixed_PercDry_Growth_32C)
+Tukey_Mixed_PercDry_Growth_32C
+Tukey_Mixed_PercDry_Growth_32C <- as.data.frame(Tukey_Mixed_PercDry_Growth_32C$`Timepoint`) %>%
+  rownames_to_column(var = "Comparison") %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  mutate(Treatment = "32 °C") %>%
+  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
+  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+#write_xlsx(Tukey_Mixed_PercDry_Growth_32C, here("Tables", "EPS_Tukey_Mixed_PercDry_Growth_32C_FromR.xlsx"))
+
+
+### 22 C ###
+
+
+
+aov_Mixed_PercDry_Growth_22C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "22 °C")) 
+summary(aov_Mixed_PercDry_Growth_22C)
+anova_Mixed_PercDry_Growth_22C <- anova(aov_Mixed_PercDry_Growth_22C)
+
+anova_Mixed_PercDry_Growth_22C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Growth_22C), var = "Term")
+anova_Mixed_PercDry_Growth_22C
+
+anova_Mixed_PercDry_Growth_22C <- anova_Mixed_PercDry_Growth_22C %>%
+  mutate(Treatment = "22 °C") %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+#write_xlsx(anova_Mixed_PercDry_Growth_22C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Growth_22C_FromR.xlsx"))
+
+### Tukey test
+
+Tukey_Mixed_PercDry_Growth_22C <- TukeyHSD(aov_Mixed_PercDry_Growth_22C)
+Tukey_Mixed_PercDry_Growth_22C
+Tukey_Mixed_PercDry_Growth_22C <- as.data.frame(Tukey_Mixed_PercDry_Growth_22C$`Timepoint`) %>% 
+  rownames_to_column(var = "Comparison") %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  mutate(Treatment = "22 °C") %>%
+  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
+  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+
+#write_xlsx(Tukey_Mixed_PercDry_Growth_22C, here("Tables", "EPS_Tukey_Mixed_PercDry_Growth_22C_FromR.xlsx"))
+
+
+
+
+
+### Drought ###
+
+
+
+aov_Mixed_PercDry_Growth_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "Drought")) 
+summary(aov_Mixed_PercDry_Growth_DroughtC)
+anova_Mixed_PercDry_Growth_DroughtC <- anova(aov_Mixed_PercDry_Growth_DroughtC)
+
+anova_Mixed_PercDry_Growth_DroughtC <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Growth_DroughtC), var = "Term")
+anova_Mixed_PercDry_Growth_DroughtC
+
+anova_Mixed_PercDry_Growth_DroughtC <- anova_Mixed_PercDry_Growth_DroughtC %>%
+  mutate(Treatment = "Drought") %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+#write_xlsx(anova_Mixed_PercDry_Growth_DroughtC, here("Tables", "EPS_anova_anova_Mixed_PercDry_Growth_DroughtC_FromR.xlsx"))
+
+### Tukey test
+
+Tukey_Mixed_PercDry_Growth_DroughtC <- TukeyHSD(aov_Mixed_PercDry_Growth_DroughtC)
+Tukey_Mixed_PercDry_Growth_DroughtC
+Tukey_Mixed_PercDry_Growth_DroughtC <- as.data.frame(Tukey_Mixed_PercDry_Growth_DroughtC$`Timepoint`) %>% 
+  rownames_to_column(var = "Comparison") %>%
+  mutate(Treatment = "Drought") %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
+  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+
+#write_xlsx(Tukey_Mixed_PercDry_Growth_DroughtC, here("Tables", "EPS_Tukey_Mixed_PercDry_Growth_DroughtC_FromR.xlsx"))
+
+#### Compile the Anovas ####
+
+Anova_Growth_soil_Treatments <- bind_rows(anova_Mixed_PercDry_Growth_22C, anova_Mixed_PercDry_Growth_32C, anova_Mixed_PercDry_Growth_DroughtC)
+Anova_Growth_soil_Treatments
+
+write_xlsx(Anova_Growth_soil_Treatments, here("Tables", "EPS_Anova_Growth_soil_Treatments_FromR.xlsx"))
+
+
+#### Compile the Tukey tests ####
+
+Tukey_Growth_soil <- bind_rows(Tukey_Mixed_PercDry_Growth_22C, Tukey_Mixed_PercDry_Growth_32C,Tukey_Mixed_PercDry_Growth_DroughtC)
+Tukey_Growth_soil
+
+Tukey_wide_Growth_soil <- Tukey_Growth_soil %>%
+  pivot_wider(
+    names_from = Treatment,
+    values_from = c(diff, P)
+  )
+Tukey_wide_Growth_soil <- Tukey_wide_Growth_soil %>% select(Comparison, `diff_22 °C`, `P_22 °C`, `diff_32 °C`, `P_32 °C`, diff_Drought, P_Drought)
+Tukey_wide_Growth_soil
+
+write_xlsx(Tukey_wide_Growth_soil, here("Tables", "EPS_Tukey_wide_Growth_soil_FromR.xlsx"))
+
+
+```
+
+##### Mixture - Survival #####
+
+###### Population size ######
+
+```{r}
+
+
+Survival_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Survival", Population_Morphology == "Mixture"),
+       aes(x = Timepoint, y = median,
+           color = Treatment,
+           linetype = Population_Morphology,
+           group = interaction(Treatment, Population_Morphology))) +   
+  geom_point() +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = min, ymax = max), width = 0.05) +
+  scale_color_manual(values = mycols) +
+  scale_linetype_manual(values = c("Mixture" = "dotted")) +
+  xlab("Timepoint") +
+  ylab("Log10(CFU/mesocosm)") +
+  scale_y_log10() +
+  coord_cartesian(ylim = c(3, 10)) +
+#  facet_wrap(~Condition,  scales = "free_x") +
+  theme_minimal(base_size = 12) +
+  theme(
+    text = element_text(family = "Helvetica", color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    legend.position = "none"
+  )
+
+
+Survival_Mixture
+
+ggsave(Survival_Mixture, 
+       filename = here("Figures" ,"EPS_Figure3B_FromR.pdf"),
+       device = "pdf",
+       height = 4, width = 5, units = "in")
+
+
+
+
+### Statistics
+
+aov_Mixed_PercDry_Survival <- aov(Percentage_Dry_ave ~ Treatment*Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Survival" & Population_Morphology == "Mixture")) ## In the ANOVA I am taking into account the timepoint 0 
+anova_Mixed_PercDry_Survival <- anova(aov_Mixed_PercDry_Survival) #Calculate the anova
+
+anova_Mixed_PercDry_Survival <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival), var = "Term") #For table formating
+anova_Mixed_PercDry_Survival
+
+## Aesthetics
+
+anova_Mixed_PercDry_Survival <- anova_Mixed_PercDry_Survival %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+write_xlsx(anova_Mixed_PercDry_Survival, here("Tables", "EPS_anova_Mixed_PercDry_Survival_FromR.xlsx"))
+
+
+## I will subset the each treatment and see what timepoints statistically have higher percentage of dry bacteria
+
+### 32 C ###
+
+aov_Mixed_PercDry_Survival_32C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "32 °C")) 
+summary(aov_Mixed_PercDry_Survival_32C)
+anova_Mixed_PercDry_Survival_32C <- anova(aov_Mixed_PercDry_Survival_32C)
+
+anova_Mixed_PercDry_Survival_32C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_32C), var = "Term")
+anova_Mixed_PercDry_Survival_32C
+
+anova_Mixed_PercDry_Survival_32C <- anova_Mixed_PercDry_Survival_32C %>%
+  mutate(Treatment = "32 °C") %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+#write_xlsx(anova_Mixed_PercDry_Survival_32C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_32C_FromR.xlsx"))
+
+### Tukey test
+
+Tukey_Mixed_PercDry_Survival_32C <- TukeyHSD(aov_Mixed_PercDry_Survival_32C)
+Tukey_Mixed_PercDry_Survival_32C
+Tukey_Mixed_PercDry_Survival_32C <- as.data.frame(Tukey_Mixed_PercDry_Survival_32C$`Timepoint`) %>%
+  rownames_to_column(var = "Comparison") %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  mutate(Treatment = "32 °C") %>%
+  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
+  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+#write_xlsx(Tukey_Mixed_PercDry_Survival_32C, here("Tables", "EPS_Tukey_Mixed_PercDry_Survival_32C_FromR.xlsx"))
+
+
+
+
+### 22 C ###
+
+
+
+aov_Mixed_PercDry_Survival_22C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "22 °C")) 
+summary(aov_Mixed_PercDry_Survival_22C)
+anova_Mixed_PercDry_Survival_22C <- anova(aov_Mixed_PercDry_Survival_22C)
+
+anova_Mixed_PercDry_Survival_22C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_22C), var = "Term")
+anova_Mixed_PercDry_Survival_22C
+
+anova_Mixed_PercDry_Survival_22C <- anova_Mixed_PercDry_Survival_22C %>%
+  mutate(Treatment = "22 °C") %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+#write_xlsx(anova_Mixed_PercDry_Survival_22C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_22C_FromR.xlsx"))
+
+### Tukey test
+
+Tukey_Mixed_PercDry_Survival_22C <- TukeyHSD(aov_Mixed_PercDry_Survival_22C)
+Tukey_Mixed_PercDry_Survival_22C
+Tukey_Mixed_PercDry_Survival_22C <- as.data.frame(Tukey_Mixed_PercDry_Survival_22C$`Timepoint`) %>% 
+  rownames_to_column(var = "Comparison") %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  mutate(Treatment = "22 °C") %>%
+  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
+  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+
+#write_xlsx(Tukey_Mixed_PercDry_Survival_22C, here("Tables", "EPS_Tukey_Mixed_PercDry_Survival_22C_FromR.xlsx"))
+
+
+
+
+
+### Drought ###
+
+
+
+aov_Mixed_PercDry_Survival_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "Drought")) 
+summary(aov_Mixed_PercDry_Survival_DroughtC)
+anova_Mixed_PercDry_Survival_DroughtC <- anova(aov_Mixed_PercDry_Survival_DroughtC)
+
+anova_Mixed_PercDry_Survival_DroughtC <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_DroughtC), var = "Term")
+anova_Mixed_PercDry_Survival_DroughtC
+
+anova_Mixed_PercDry_Survival_DroughtC <- anova_Mixed_PercDry_Survival_DroughtC %>%
+  mutate(Treatment = "Drought") %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+#write_xlsx(anova_Mixed_PercDry_Survival_DroughtC, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_DroughtC_FromR.xlsx"))
+
+### Tukey test
+
+Tukey_Mixed_PercDry_Survival_DroughtC <- TukeyHSD(aov_Mixed_PercDry_Survival_DroughtC)
+Tukey_Mixed_PercDry_Survival_DroughtC
+Tukey_Mixed_PercDry_Survival_DroughtC <- as.data.frame(Tukey_Mixed_PercDry_Survival_DroughtC$`Timepoint`) %>% 
+  rownames_to_column(var = "Comparison") %>%
+  mutate(Treatment = "Drought") %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
+  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+
+#write_xlsx(Tukey_Mixed_PercDry_Survival_DroughtC, here("Tables", "EPS_Tukey_Mixed_PercDry_Survival_DroughtC_FromR.xlsx"))
+
+
+### 4 C ###
+
+
+
+aov_Mixed_PercDry_Survival_4C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
+                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "4 °C")) 
+summary(aov_Mixed_PercDry_Survival_4C)
+anova_Mixed_PercDry_Survival_4C <- anova(aov_Mixed_PercDry_Survival_4C)
+
+anova_Mixed_PercDry_Survival_4C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_4C), var = "Term")
+anova_Mixed_PercDry_Survival_4C
+
+anova_Mixed_PercDry_Survival_4C <- anova_Mixed_PercDry_Survival_4C %>%
+  mutate(Treatment = "4 °C") %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+#write_xlsx(anova_Mixed_PercDry_Survival_4C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_4C_FromR.xlsx"))
+
+### Tukey test
+
+Tukey_Mixed_PercDry_Survival_4C <- TukeyHSD(aov_Mixed_PercDry_Survival_4C)
+Tukey_Mixed_PercDry_Survival_4C
+Tukey_Mixed_PercDry_Survival_4C <- as.data.frame(Tukey_Mixed_PercDry_Survival_4C$`Timepoint`) %>%
+  rownames_to_column(var = "Comparison") %>%
+  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
+  mutate(Treatment = "4 °C") %>%
+  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
+  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+
+
+
+
+
+#### Compile the Anovas ####
+
+Anova_Survival_soil_Treatments <- bind_rows(anova_Mixed_PercDry_Survival_22C, anova_Mixed_PercDry_Survival_32C, anova_Mixed_PercDry_Survival_DroughtC, anova_Mixed_PercDry_Survival_4C)
+Anova_Survival_soil_Treatments
+
+write_xlsx(Anova_Survival_soil_Treatments, here("Tables", "EPS_Anova_Survival_soil_Treatments_FromR.xlsx"))
+
+
+#### Compile the Tukey tests ####
+
+Tukey_Survival_soil <- bind_rows(Tukey_Mixed_PercDry_Survival_22C, Tukey_Mixed_PercDry_Survival_32C,Tukey_Mixed_PercDry_Survival_DroughtC, Tukey_Mixed_PercDry_Survival_4C)
+Tukey_Survival_soil
+
+Tukey_wide_Survival_soil <- Tukey_Survival_soil %>%
+  pivot_wider(
+    names_from = Treatment,
+    values_from = c(diff, P)
+  )
+Tukey_wide_Survival_soil <- Tukey_wide_Survival_soil %>% select(Comparison, `diff_22 °C`, `P_22 °C`, `diff_32 °C`, `P_32 °C`, diff_Drought, P_Drought, `diff_4 °C`, `P_4 °C`)
+Tukey_wide_Survival_soil
+
+write_xlsx(Tukey_wide_Survival_soil, here("Tables", "EPS_Tukey_wide_Survival_soil_FromR.xlsx"))
+
+
+```
+
+###### Percentage of Dry bacteria ######
+
+```{r}
+
+Survival_Mesocosm_Mixture_initial_ave <- soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture" & Timepoint == "0")
+
+Initial_ave_growth <- Survival_Mesocosm_Mixture_initial_ave %>% 
+  ungroup() %>% 
+  summarise(Initial_ave_growth = mean(Percentage_Dry_ave, na.rm = TRUE)) %>% 
+  pull(Initial_ave_growth)
+
+Initial_ave_growth
+
+###Maria here you need to organize in order the data for the times. It is not in order
+
+Survival_DryPercentage <- ggplot(data = soil.expanded_ave %>% 
+                                   filter(Condition == "Survival" & Population_Morphology == "Mixture" & Timepoint != "0") %>% 
+                                   mutate(Timepoint = factor(Timepoint, levels = c("3 months", "6 months", "12 months"))), 
+  aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
+  stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
+  scale_shape_manual(values = myshapes_survival) +
+  scale_fill_manual(values = mycols) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
+  geom_hline(yintercept= Initial_ave_growth, linetype="dashed", color="black", size=1) +
+  labs(x = "Treatment", y = "Percentage of Dry bacteria") +
+  theme_classic() +
+  theme(
+    text = element_text(family = "Helvetica", color = "black"),
+    axis.text = element_text(size = 14, color = "black"),
+    axis.title.x = element_text(size = 18),
+    axis.title.y = element_text(size = 18),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    legend.position = "none")
+
+Survival_DryPercentage
+
+
+ggsave(Survival_DryPercentage, 
+       filename = here("Figures","EPS_Figure3D_FromR.pdf"), 
+       device = "pdf", 
+       height = 4, width = 5, units = "in")
+
+
+```
+
+#### Mucoid ####
+
+##### Mucoid - Growth and Survival #####
+
+There was a shift from Mucoid to Dry
+
+```{r}
+
+
+Growth_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology == "Mucoid"),
+       aes(x = Timepoint, y = median,
+           color = Treatment,
+           linetype = Population_Morphology,
+           group = interaction(Treatment, Population_Morphology))) +   
+  geom_point() +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = min, ymax = max), width = 0.05) +
+  scale_color_manual(values = mycols) +
+  scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
+  xlab("Timepoint") +
+  ylab("Log10(CFU/mesocosm)") +
+  scale_y_log10() +
+  facet_wrap(~Condition,  scales = "free_x") +
+  theme_minimal(base_size = 12) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+
+Growth_Mucoid
+
+ggsave(Growth_Mucoid, 
+       filename = here("Figures" ,"EPS_FigureMucoidGrowth_FromR.pdf"),
+       device = "pdf",
+       height = 5, width = 9, units = "in")
+
+
+
+```
+
+##### Mucoid shift: Survival and Growth #####
+
+```{r}
+
+#### Survival ####
+
+Survival_Mesocosm_Mucoid_NoIn <- soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mucoid" & Timepoint != "0")
+
+Shift_Mucoid_Dry_Soil_Survival <- ggplot(Survival_Mesocosm_Mucoid_NoIn %>% 
+                                          mutate(Timepoint = factor(Timepoint, levels = c("3 months", "6 months", "12 months"))),  
+                                         aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
+  stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
+  scale_shape_manual(values = myshapes_survival) +
+  scale_fill_manual(values = mycols) +
+  labs(x = "Treatment", y = "Percentage of dry bacteria") +
+  theme_classic() +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black")
+#    legend.position  = "none"
+)
+  
+Shift_Mucoid_Dry_Soil_Survival
+
+ggsave(Shift_Mucoid_Dry_Soil_Survival, 
+       filename= here("Figures", "EPS_MucoidShiftSurvival_FromR.pdf"),
+       device = "pdf",
+       height = 5, width = 6, units = "in")
+
+
+
+
+#### Growth ####
+
+Growth_Mesocosm_Mucoid_NoIn <- soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mucoid" & Timepoint != "0")
+
+                     
+Shift_Mucoid_Dry_Soil_Growth <- ggplot(Growth_Mesocosm_Mucoid_NoIn %>% 
+                                          mutate(Timepoint = factor(Timepoint, levels = c("7 days", "14 days", "21 days", "42 days"))),  
+                                         aes(x = Treatment, y = Percentage_Dry_ave, fill = Treatment, group = interaction(Treatment, Timepoint))) +
+  stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
+  scale_shape_manual(values = myshapes_growth) +
+  scale_fill_manual(values = mycols) +
+  labs(x = "Treatment", y = "Percentage of dry bacteria") +
+  theme_classic() +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black")
+#    legend.position  = "none"
+)
+  
+Shift_Mucoid_Dry_Soil_Growth
+
+ggsave(Shift_Mucoid_Dry_Soil_Growth, 
+       filename= here("Figures", "EPS_MucoidShiftGrowth_FromR.pdf"),
+       device = "pdf",
+       height = 5, width = 6, units = "in")
+
+```
+
+#### Dry ####
+
+##### Dry - Growth and Survival #####
+
+This might be the wrong approach but I think results wise, it is better if dry bacteria is compared to mucoid bacteria in the same plots so I will do that. 
+
+```{r}
+
+#### Growth and Survival for both mucoid and dry bacteria 
+
+Growth_Survival_DryMucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology %in% c("Dry", "Mucoid")),
+       aes(x = Timepoint, y = median,
+           color = Treatment,
+           linetype = Population_Morphology,
+           group = interaction(Treatment, Population_Morphology))) +   
+  geom_point() +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = min, ymax = max), width = 0.05) +
+  scale_color_manual(values = mycols) +
+  scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
+  xlab("Timepoint") +
+  ylab("Log10(CFU/mesocosm)") +
+  scale_y_log10() +
+  facet_wrap(~Condition,  scales = "free_x") +
+  theme_minimal(base_size = 12) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black")
+#    legend.position  = "none"
+)
+
+
+Growth_Survival_DryMucoid
+
+ggsave(Growth_Survival_DryMucoid, 
+       filename = here("Figures" ,"EPS_Growth_Survival_DryMucoid_FromR.pdf"),
+       device = "pdf",
+       height = 5, width = 11, units = "in")
+
+
+
+
+#### Only Growth and Survival of Dry
+Growth_Survival_Dry <- ggplot(popsize.median_All %>% filter(Population_Morphology == "Dry"),
+       aes(x = Timepoint, y = median,
+           color = Treatment,
+           linetype = Population_Morphology,
+           group = interaction(Treatment, Population_Morphology))) +   
+  geom_point() +
+  geom_line(size = 1) +
+  geom_errorbar(aes(ymin = min, ymax = max), width = 0.05) +
+  scale_color_manual(values = mycols) +
+  scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
+  xlab("Timepoint") +
+  ylab("Log10(CFU/mesocosm)") +
+  scale_y_log10() +
+  facet_wrap(~Condition,  scales = "free_x") +
+  theme_minimal(base_size = 12) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+
+Growth_Survival_Dry
+
+ggsave(Growth_Survival_Dry, 
+       filename = here("Figures" ,"EPS_FigureS5_FromR.pdf"),
+       device = "pdf",
+       height = 5, width = 11, units = "in")
+
+
+
+```
+
+
+##### 
+
+### Host ###
+
+##### Plant benefit #####
+
+```{r}
+
+Host_data <-  read.csv(here("Data_input", "Single_Strain_Experiment_Host.csv"))
+#View(Host_data)
+
+## I will remove the plants that are dead
+
+Host_data <- Host_data %>% filter(!NOTES %in% c("DEAD", "DEAD - No root or shoot envelope found")) #Ask Liana, there are other notes like "2 plants in the root envelope", "help with label" and other random stuff that I am not sure if it is appropriate. I can always just delete that when I cure the data, but I don't know if some of those warnings should be taken seriously to the point that entire rows are removed. 
+#View(Host_data)
+
+## I will remove the commercial inoculants 
+
+Host_data <- Host_data %>% filter(!Strain %in% c("UNI", "NIG", "MIX", "MC2", "EXC"))
+
+## Data I am interested in: Shoot biomass (Shootweight_g), total nodule number (I have to add the nodules), and the proportion of nodule branched
+
+Host_data <- Host_data %>% select(Strain, Variety, Rep, Label, Rootweight_g, Shootweight_g, Nodule_LOBED, Nodule_UN_Lobed, Morphology)
+
+### Find total nodule number 
+
+Host_data <- Host_data %>%
+  mutate(Nod_number = as.numeric(Nodule_LOBED) + as.numeric(Nodule_UN_Lobed),
+         Prop_branched = as.numeric(Nodule_LOBED)/Nod_number)
+
+Host_data <- Host_data %>%
+  mutate(Variety = na_if(Variety, "")) %>%       # Converts "" to NA
+  mutate(Variety = na_if(Variety, " ")) %>%       # Converts " " to NA
+  filter(!is.na(Variety))
+
+#View(Host_data)
+
+## Now find the average per strain 
+
+Host_data_ave <- 
+  Host_data %>%
+  group_by(Strain, Variety, Morphology) %>%
+  summarise(
+    ave_shoot = mean(as.numeric(Shootweight_g), na.rm = TRUE),
+    ave_root  = mean(as.numeric(Rootweight_g), na.rm = TRUE),
+    ave_nod_total = mean(Nod_number, na.rm = TRUE),
+    ave_prop_branched = mean(Prop_branched, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+Host_data_ave
+#View(Host_data_ave)
+
+### Now I will calculate the shoot biomass   
+
+### Figure: Host biomass ###
+
+
+HostBiomass <- ggplot(data = Host_data_ave, aes(x= Morphology, y = ave_shoot, fill = Morphology)) +
+stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.6,
+               color = "black", linewidth = 0.4,
+               position = position_dodge(width = 0.8)) +
+    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
+        scale_fill_manual(values = color_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Plant shoot biomass (g)"
+  ) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+HostBiomass
+
+ggsave(HostBiomass, 
+       filename = here("Figures" ,"EPS_Figure4A_FromR.pdf"),
+       device = "pdf",
+       height = 4, width = 6, units = "in")
+
+
+aov_hostbiomass <- aov(ave_shoot ~ Morphology*Variety, Host_data_ave)
+summary(aov_hostbiomass)
+anova_hostbiomass <- anova(aov_hostbiomass)
+anova_hostbiomass
+
+anova_hostbiomass <- rownames_to_column(as.data.frame(anova_hostbiomass), var = "Term") #For table formating
+anova_hostbiomass
+
+## Aesthetics
+
+anova_hostbiomass <- anova_hostbiomass %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+
+anova_hostbiomass
+write_xlsx(anova_hostbiomass, here("Tables", "EPS_anova_hostbiomass_FromR.xlsx"))
+
+```
+
+
+
+
+
+### Rhizobia relative fitness 
+```{r}
+
+Freq_data <-  read.table(here("Data_input", "freq_100_AVT118.tsv"), header = TRUE, sep = "") #This is the frequency data
+#View(StrainFitness_data)
+
+Freq_data <- Freq_data %>% 
+  separate(col = pool, 
+           into = c("AG", "Type", "Variety", "Rep"),
+           sep = "_", 
+           remove = FALSE, 
+           fill = "right"
+  )
+#View(StrainFitness_data) I think the NA in Rep that don't have variety are probably the initial ones
+Freq_data_MIX <- Freq_data %>% filter(Type == "MIX") ## Remove MC2
+#View(StrainFitness_data)
+
+Freq_data_MIX <- Freq_data_MIX %>%
+  mutate(Variety = if_else(Variety %in% c("1", "2", "3", "4"), "Initial", Variety))
+
+Initial_Freq_data_MIX <- Freq_data_MIX %>% filter(Variety == "Initial")
+Initial_Freq_data_MIX
+
+Freq_data_NoInitial <- Freq_data_MIX %>% filter(Variety != "Initial") ## In the dataframe the Rep that have NA don't have lsited the variety
+Freq_data_NoInitial
+
+## Calculate the fitness 
+
+Initial_Freq_data_MIX <-apply((Initial_Freq_data_MIX[,c(-1:-5)]), 2, mean) # The "2" specified that the mean should be found per column.
+Initial_Freq_data_MIX
+Freq_data_NoInitial
+Sub_Freq <- Freq_data_NoInitial[, -c(1:5)]
+Sub_Freq
+normalized <- sweep(as.matrix(Sub_Freq), 2, Initial_Freq_data_MIX[colnames(Sub_Freq)], FUN = "/")
+#View(normalized)
+## Calculate the fit 
+
+meso_fit <-as_tibble(cbind(Freq_data_NoInitial[,c(1:5)],log2(normalized))) #Find the log2 of the division and add back the information
+#View(meso_fit)
+
+
+## There are some that have a -Inf so I will replace it with -8
+
+meso_fit <- meso_fit %>%
+  mutate(across(where(is.numeric), ~ ifelse(. == -Inf, -8, .))) 
+meso_fit
+
+### Represent the values in the long format to be able to paste the values for Morphology 
+
+
+meso_fit_long <- meso_fit %>%
+  pivot_longer(
+    cols = -c(Variety,Rep,pool, AG, Type, Variety, Rep),                    
+    names_to = "Strain_Code",       
+    values_to = "Fitness"            
+  )
+#View(meso_fit_long)
+
+StrainFitness_Plant <- merge(meso_fit_long, Strains, by = "Strain_Code")
+
+
+meso_fit_ave <- StrainFitness_Plant %>% 
+  group_by(Strain, Variety, Morphology) %>%
+  summarise(Fitness_ave = mean(Fitness))
+#View(meso_fit_ave)
+
+meso_fit_ggplot <- ggplot(data = meso_fit_ave, aes(x= Morphology, y = Fitness_ave, fill = Morphology)) +
+stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.6,
+               color = "black", linewidth = 0.4,
+               position = position_dodge(width = 0.8)) +
+    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
+        scale_fill_manual(values = color_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Rhizobial relative fitness"
+  ) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+meso_fit_ggplot
+
+
+ggsave(meso_fit_ggplot, 
+       filename = here("Figures" ,"EPS_Figure4B_FromR.pdf"),
+       device = "pdf",
+       height = 4, width = 6, units = "in")
+
+aov_RhizobialFitness <- lm(Fitness_ave ~ Morphology*Variety, meso_fit_ave)
+summary(aov_RhizobialFitness)
+anova_RhizobialFitness <- anova(aov_RhizobialFitness)
+anova_RhizobialFitness
+
+anova_RhizobialFitness <- rownames_to_column(as.data.frame(anova_RhizobialFitness), var = "Term") #For table formating
+anova_RhizobialFitness
+
+anova_RhizobialFitness <- anova_RhizobialFitness %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+
+anova_RhizobialFitness
+write_xlsx(anova_RhizobialFitness, here("Tables", "EPS_anova_RhizobialFitness_FromR.xlsx"))
+
+```
+
+#### Other plant traits ####
+
+```{r}
+#### Nodule number
+
+
+Host_NoduleTotal <- ggplot(data = Host_data_ave, aes(x= Morphology, y = ave_nod_total, fill = Morphology)) +
+stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.6,
+               color = "black", linewidth = 0.4,
+               position = position_dodge(width = 0.8)) +
+    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
+        scale_fill_manual(values = color_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Total Nodule number"
+  ) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 10, color = "black"),
+    axis.title.x     = element_text(size = 12, color = "black"),
+    axis.title.y     = element_text(size = 12, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+Host_NoduleTotal
+
+
+
+ggsave(Host_NoduleTotal, 
+       filename = here("Figures" ,"EPS_Host_NoduleTotal_FromR.pdf"),
+       device = "pdf",
+       height = 3, width = 4, units = "in")
+
+
+
+aov_hostnodtotal <- lm(ave_nod_total ~ Morphology*Variety, Host_data_ave)
+summary(aov_hostnodtotal)
+anova_aov_hostnodtotal <- anova(aov_hostnodtotal)
+anova_aov_hostnodtotal
+
+anova_aov_hostnodtotal <- rownames_to_column(as.data.frame(anova_aov_hostnodtotal), var = "Term") #For table formating
+anova_aov_hostnodtotal
+
+## Aesthetics
+
+anova_aov_hostnodtotal <- anova_aov_hostnodtotal %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(Trait = "Nodule number") %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+
+anova_aov_hostnodtotal
+write_xlsx(anova_aov_hostnodtotal, here("Tables", "EPS_anova_aov_hostnodtotal_FromR.xlsx"))
+
+
+
+#### Branching 
+
+Host_Branching <- ggplot(data = Host_data_ave, aes(x= Morphology, y = ave_prop_branched, fill = Morphology)) +
+stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.6,
+               color = "black", linewidth = 0.4,
+               position = position_dodge(width = 0.8)) +
+    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
+        scale_fill_manual(values = color_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Proportion of branched nodules"
+  ) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 10, color = "black"),
+    axis.title.x     = element_text(size = 12, color = "black"),
+    axis.title.y     = element_text(size = 12, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+Host_Branching
+
+ggsave(Host_Branching, 
+       filename = here("Figures" ,"EPS_Host_Branching_FromR.pdf"),
+       device = "pdf",
+       height = 3, width = 4, units = "in")
+
+
+
+aov_hostBranching <- aov(ave_prop_branched ~ Morphology*Variety, Host_data_ave)
+summary(aov_hostBranching)
+anova_aov_hostBranching <- anova(aov_hostBranching)
+anova_aov_hostBranching
+
+anova_aov_hostBranching <- rownames_to_column(as.data.frame(anova_aov_hostBranching), var = "Term") #For table formating
+anova_aov_hostBranching
+
+anova_aov_hostBranching <- anova_aov_hostBranching %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(Trait = "Proportion of Branched nodules") %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+
+anova_aov_hostBranching
+write_xlsx(anova_aov_hostBranching, here("Tables", "EPS_anova_aov_hostBranching_FromR.xlsx"))
+
+### Put together these two tables 
+
+anova_OtherPlantTraits <- rbind(anova_aov_hostnodtotal, anova_aov_hostBranching)
+anova_OtherPlantTraits
+
+write_xlsx(anova_OtherPlantTraits, here("Tables", "EPS_anova_OtherPlantTraits_FromR.xlsx"))
+
+
+
+
+
+### Assessing correlations between proportion of branched nodules and host bionass
+
+
+color_values#Host_data_ave
+
+#Host_Branching_benefit <- ggplot(data = Host_data_ave, aes(x= ave_prop_branched, y = ave_shoot, color = Morphology)) +
+#  geom_jitter(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+#  scale_color_manual(values = color_values) +
+#  facet_wrap(~Variety) +
+#  theme_classic() +
+#  labs(
+#    x= "Proportion of Branched nodule",
+#    y = "Shoot biomass"
+#  ) +
+#  theme(
+#   text             = element_text(family = "Helvetica", color = "black"),
+#    axis.text        = element_text(size = 10, color = "black"),
+#    axis.title.x     = element_text(size = 12, color = "black"),
+#    axis.title.y     = element_text(size = 12, color = "black"),
+#    panel.grid       = element_blank(),
+#    axis.line        = element_line(color = "black"),
+#    axis.ticks       = element_line(color = "black"),
+#    legend.position  = "none")
+
+#Host_Branching_benefit
+
+
+### Density of reproducible bacteria per nodule (CFU/area)
+
+## This requires a different document
+
+# We crushed individual nodules and performed dilution series and plated them in culture media to estimate 
+
+Single_nodule_CFU <-  read.csv(here("Data_input", "Host_Single_Nodule_CFU.csv"))
+#View(Single_nodule_CFU)
+
+Single_nodule_CFU <- Single_nodule_CFU %>%
+  separate_wider_delim(
+    cols = Sample_ID,
+    delim = ".",
+    names = c("Strain", "Variety", "Plant_Rep"),
+    too_few = "align_start"
+  )
+
+Single_nodule_CFU
+Single_nodule_CFU <- Single_nodule_CFU %>%
+  mutate(spot.1 = as.numeric(spot.1),
+         spot.2 = as.numeric(spot.2),
+         spot.3 = as.numeric(spot.3),
+         spot.4 = as.numeric(spot.4),
+         spot.5 = as.numeric(spot.5)
+         )
+
+Single_nodule_CFU <- Single_nodule_CFU %>% filter(Variety %in% c("O", "V", "S"))
+
+Single_nodule_CFU <- Single_nodule_CFU %>%
+  mutate(spot_ave = rowMeans(across(c(spot.1, spot.2, spot.3, spot.4, spot.5)), na.rm = TRUE))
+Single_nodule_CFU
+### I will calculate the total CFU 
+
+Single_nodule_CFU <- Single_nodule_CFU %>%
+  mutate(Total_CFU = spot_ave*(10^(dilution.counted - 1))*1000/20)
+#View(Single_nodule_CFU)
+
+Single_nodule_CFU <- Single_nodule_CFU %>%
+  mutate(Density = Total_CFU/`Nodule.area`)
+
+Single_nodule_CFU
+
+Single_nodule_CFU_clean <- Single_nodule_CFU %>%
+  filter(is.finite(Density), Density > 0)## There are some Nan in density because some nodules did not have countable colonies or contamination, and it could also be NA because we did not take the nodule area for some nodules. There are also some 0 because all the CFU we counted were 0, I also need to get rid of that.
+
+
+Density <- ggplot(data = Single_nodule_CFU, aes(x= Morphology, y = log10(Density), fill = Morphology)) +
+stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.6,
+               color = "black", linewidth = 0.4,
+               position = position_dodge(width = 0.8)) +
+    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
+        scale_fill_manual(values = color_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Log10(CFU/area per nodule)"
+  ) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 10, color = "black"),
+    axis.title.x     = element_text(size = 12, color = "black"),
+    axis.title.y     = element_text(size = 12, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+Density
+
+#View(Single_nodule_CFU)
+
+ggsave(Density, 
+       filename = here("Figures" ,"EPS_Density_FromR.pdf"),
+       device = "pdf",
+       height = 3, width = 4, units = "in")
+
+### Before running the code: 
+#View(Single_nodule_CFU)
+
+colnames(Single_nodule_CFU_clean)
+#View(Single_nodule_CFU_clean)
+model_intercept <- lmer(log10(Density) ~ Morphology*Variety + (1 | Strain) + (1 | Strain:Plant_Rep),  data = Single_nodule_CFU_clean)
+model_intercept
+anova(model_intercept, type = 3)
+
+
+```
+
+### Dual inoculation experiments ###
+
+This compares pairs of mutants 
+
+```{r}
+
+Dual_inocualtion <- read_csv(here("Data_input", "Dual_inoculation.csv"))
+#View(Dual_inocualtion)
+
+Harvesting_results_RPM <- Dual_inocualtion  %>% filter(Pair %in% c("1", "2", "3", "4")) # Remove control and NA cells
+Harvesting_results_RPM <- Harvesting_results_RPM %>%
+  mutate(Pair = as.character(Pair)) %>%
+  mutate(Colonies_Dry = as.numeric(Colonies_Dry)) %>%
+  mutate(Colonies_Mucoid = as.numeric(Colonies_Mucoid)) %>%
+  mutate(Percentage_Dry = (Colonies_Dry/(Colonies_Dry + Colonies_Mucoid)*100)) #One plate per plant
+#View(Harvesting_results_M)
+
+Harvesting_results_Dual <- Harvesting_results_RPM %>% filter(Morphology == "Dual")
+  
+                     
+Dual_Competition <- ggplot(Harvesting_results_Dual %>% 
+                                         mutate(Pair = factor(Pair, levels = c("1", "2", "3", "4"))),  
+                                         aes(x = Pair, y = Percentage_Dry)) +
+  stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8), fill = "#e0ba3e") +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
+  labs(x = "Pairs", y = "Percentage of dry bacteria") +
+  theme_classic() +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black")
+#    legend.position  = "none"
+)
+
+Dual_Competition
+
+
+ggsave(Dual_Competition, 
+       filename = here("Figures" ,"EPS_DualCompetition_FromR.pdf"),
+       device = "pdf",
+       height = 4, width = 6, units = "in")
+
+```
+
+### Shifts from mucoid to dry in plants 
+
+```{r}
+
+Harvesting_results_Mucoid <- Harvesting_results_RPM %>% filter(Morphology == "Mucoid")
+View(Harvesting_results_Mucoid)
+
+
+                     
+Shift_InPlant <- ggplot(Harvesting_results_Mucoid %>% 
+                           mutate(Pair = factor(Pair, levels = c("1", "2", "3", "4")),
+                                  Highlight = if_else(Percentage_Dry > 0, "red_dot", "normal")),
+                         aes(x = Pair, y = Percentage_Dry)) +
+  stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8), fill = "#e0ba3e") +
+  geom_jitter(aes(color = Highlight),
+              position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
+              size = 2) +
+  scale_color_manual(values = c("normal" = "black", "red_dot" = "red")) +
+  labs(x = "Pairs", y = "Percentage of dry bacteria") +
+  theme_classic() +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 14, color = "black"),
+    axis.title.x     = element_text(size = 18, color = "black"),
+    axis.title.y     = element_text(size = 18, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none"
+  )
+Shift_InPlant
+
+ggsave(Shift_InPlant, 
+       filename = here("Figures" ,"EPS_PercentageMucoidInPlant_FromR.pdf"),
+       device = "pdf",
+       height = 4, width = 6, units = "in")
+
+```

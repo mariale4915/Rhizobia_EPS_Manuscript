@@ -1,0 +1,1786 @@
+---
+title: "Genomics_EPS"
+author: "Maria Alejandra Gil Polo"
+date: "2026-03-12"
+output: html_document
+---
+
+CHANGE 018 REALLY HIGH OR SOMETHING for an outlier. 
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+library(RColorBrewer)
+library(gplots)
+library(ggtree)
+library(vegan)
+library(corrplot)
+library(patchwork)
+#knitr::opts_chunk$set(message = FALSE)
+#install.packages("ggnewscale")
+library(ggnewscale)
+library(ape)
+library(readxl)
+#install.packages("BiocManager")
+#BiocManager::install(c("ggtree", "ggtreeExtra"))
+library(ggtreeExtra)
+#install.packages("colorRamps")
+library(colorRamps)
+library(colorspace)
+library(here)
+
+library(Biostrings)
+
+
+```
+
+I am still importing this information from Sohini's github but as soon as she has decided the information is correct, I can think about moving this to my repository or use the link to hers 
+
+
+```{r data import,echo=Generating the ML tree}
+
+## THESE FILES WERE MADE BY SOHINI 
+
+tree<-read.tree("/Users/mariaalejandragilpolo/OneDrive - The Pennsylvania State University/Burghardt, Liana T's files - GitHub/AVT_SingleInoculation/Data/AVT_single_copy_core_concat.fasta.treefile")
+tree
+
+
+# 2. Read your annotation file from iTOL
+# Replace the path with wherever you saved Annotation_iTOL_final.txt
+meta_raw <- read.delim("/Users/mariaalejandragilpolo/OneDrive - The Pennsylvania State University/Burghardt, Liana T's files - GitHub/AVT_SingleInoculation/Data/Annotation_iTOL_final.txt", sep = "\t", header = TRUE)
+meta_raw
+#View(meta)
+```
+
+
+
+ADD MY EDITIONS TO SOHINI'S TREE
+
+
+After Liana's suggestions. She suggested me to work with Sohini's tree and not to filter out AVT 121 (Did not grow in RDM liquid), AVT18 (overproduced glucose), and 067 that I forgot to streak. I will just put NA or something like that in the plots
+```{r}
+
+#########
+
+
+### THESE FILES COME FROM MY ANALYSIS 
+### To join with the meta data is have the new names to replace the AVT with my label. 
+
+### The excel file to change the codes that Sohini uses 
+
+
+
+Codes <- read_excel("/Users/mariaalejandragilpolo/Downloads/Strain_codes_ForTree.xlsx") #Has all the 117 strains. "Strain_Code" is 001, 002, 003... and Strain is AVT1, AVT2
+#View(Codes)
+#View(Anthrone_mean)## Here the Strain is 001, 002, 003... Therefore in the Anthrone mean file I will change the name of Strain to "Strain_Code"
+
+Anthrone_mean_OD_ForTree_ave <- Anthrone_mean %>% dplyr::rename(Strain_Code = Strain) %>% dplyr::select(-"Morphology") #Remove Morphology from Anthrone mean that does no have the 
+### Now both files, Anthrone_mean and Codes have the same "Strain_Code" the 001, 002, 003 so they can be merged
+
+Codes_glucose <- left_join(Codes, Anthrone_mean_OD_ForTree_ave, by = "Strain_Code") 
+
+#Codes_glucose <- Codes_glucose %>%
+#  mutate(
+#    Glucose_OD600_ave = ifelse(Strain_Code %in% c("018", "067", "121"), NA, Glucose_OD600_ave)
+#  )
+
+#View(Codes_glucose)
+
+####
+
+#View(Codes_glucose)
+View(meta_raw)## It contains Morphology and Variety, but the Morphology is R and P instead of "Mucoid" and "Dry" and I do not care about the variety origin here. 
+
+meta_tree <- meta_raw %>%
+  left_join(
+    Codes_glucose %>%
+      select(Strain, Strain_Code, Pairs, Glucose_OD600_ave), ## I am joining with Strain, Strain_Code, Pairs, and the Glucose that are in the Codes_glucose file. The meta_raw from Sohini's analysis only has Strain, Morphoogy and Source_variety
+    by = "Strain"
+  ) %>%
+  mutate(
+    Morphology = recode(Morphology,   #Sohini has R and P in her metadata but I now use "Mucoid" and "Dry" instead so I will replace it
+                        "R" = "Mucoid",
+                        "P" = "Dry"),
+    Morphology = factor(Morphology, levels = c("Mucoid", "Dry")), 
+    Pairs_label = ifelse(is.na(Pairs), "No pair", "Paired"),
+    Pairs = factor(Pairs)
+  )
+
+#View(meta_tree)
+
+## Becuase I want the glucose for 018 that was an oulier to be NA, and 121 did not grow so it is also NA, I will change their values
+
+meta_tree$Glucose_OD600_ave[meta_tree$Strain_Code %in% c("018", "121")] <- NA
+#View(meta_tree)
+
+
+
+write.table(meta_tree, "/Users/mariaalejandragilpolo/OneDrive - The Pennsylvania State University/Burghardt, Liana T's files - GitHub/AVT_SingleInoculation/Data/Mariale_Annotation_iTOL_final.txt", sep = "\t", col.names = TRUE, row.names = FALSE)
+meta_raw ### Is the value I am exporting 
+
+
+
+```
+
+I am having problems with R studio so I will try itols, for that I need to prepare the metadata
+
+```{r}
+
+
+library(colorspace)   # for diverge_hcl
+# library(colorRamps) # uncomment if you want magenta2green instead
+
+dir.create("itol_annotations", showWarnings = FALSE)
+
+# ============================================================
+# FILE 1: labels.txt   (rename tips Strain -> Strain_Code)
+# ============================================================
+labels_df <- data.frame(
+  tip = meta_tree$Strain,
+  new_label = meta_tree$Strain_Code
+)
+labels_df <- labels_df[!is.na(labels_df$tip) & !is.na(labels_df$new_label), ]
+
+cat("LABELS\nSEPARATOR TAB\n\nDATA\n",
+    file = "itol_annotations/labels.txt")
+write.table(labels_df, "itol_annotations/labels.txt",
+            sep = "\t", append = TRUE, row.names = FALSE,
+            col.names = FALSE, quote = FALSE)
+
+
+# ============================================================
+  # FILE 2: morphology_colorstrip.txt
+  # ============================================================
+  # Edit these two colors to change Morphology appearance
+  morph_colors <- c("Mucoid" = "#4eadb9", "Dry" = "#e0ba3e")
+  
+  morph_df <- data.frame(
+    tip   = meta_tree$Strain,
+    color = morph_colors[as.character(meta_tree$Morphology)],
+    label = meta_tree$Morphology
+  )
+  morph_df <- morph_df[!is.na(morph_df$color), ]
+  
+  cat(
+    "DATASET_COLORSTRIP\n",
+    "SEPARATOR TAB\n",
+    "DATASET_LABEL\tMorphology\n",
+    "COLOR\t#000000\n",
+    "STRIP_WIDTH\t25\n",
+    "LEGEND_TITLE\tMorphology\n",
+    "LEGEND_SHAPES\t1\t1\n",
+    "LEGEND_COLORS\t", morph_colors["Mucoid"], "\t", morph_colors["Dry"], "\n",
+    "LEGEND_LABELS\tMucoid\tDry\n",
+    "\nDATA\n",
+    sep = "",
+    file = "itol_annotations/morphology_colorstrip.txt"
+  )
+  write.table(morph_df, "itol_annotations/morphology_colorstrip.txt",
+              sep = "\t", append = TRUE, row.names = FALSE,
+              col.names = FALSE, quote = FALSE)
+
+
+# ============================================================
+# FILE 3: pairs_colorstrip.txt   (colored boxes + pair numbers)
+# ============================================================
+# One color per pair; use rainbow() so many pairs stay distinguishable
+pair_ids    <- sort(unique(na.omit(as.character(meta_tree$Pairs))))
+pair_colors <- setNames(rainbow(length(pair_ids)), pair_ids)
+
+pairs_df <- data.frame(
+  tip   = meta_tree$Strain,
+  color = pair_colors[as.character(meta_tree$Pairs)],
+  label = meta_tree$Pairs
+)
+pairs_df <- pairs_df[!is.na(pairs_df$color), ]
+
+cat(
+  "DATASET_COLORSTRIP\n",
+  "SEPARATOR TAB\n",
+  "DATASET_LABEL\tPairs\n",
+  "COLOR\t#000000\n",
+  "STRIP_WIDTH\t40\n",
+  "SHOW_STRIP_LABELS\t1\n",
+  "STRIP_LABEL_SIZE_FACTOR\t0.9\n",
+  "STRIP_LABEL_OUTLINE\t0.5\n",
+  "\nDATA\n",
+  sep = "",
+  file = "itol_annotations/pairs_colorstrip.txt"
+)
+write.table(pairs_df, "itol_annotations/pairs_colorstrip.txt",
+            sep = "\t", append = TRUE, row.names = FALSE,
+            col.names = FALSE, quote = FALSE)
+
+
+# ============================================================
+# FILE 4: glucose_gradient.txt
+# ============================================================
+# Grab 117 colors from your chosen palette, take indices 1, 59, 117
+# as low / mid / high. Swap in magenta2green(117) if you prefer.
+glucose_pal <- diverge_hcl(117, h = c(246, 40), c = 96)
+# glucose_pal <- colorRamps::magenta2green(117)
+
+glucose_low  <- glucose_pal[1]
+glucose_mid  <- glucose_pal[59]      # middle of 117
+glucose_high <- glucose_pal[117]
+
+cat("Glucose palette (low / mid / high):",
+    glucose_low, "/", glucose_mid, "/", glucose_high, "\n")
+
+gluc_df <- data.frame(
+  tip   = meta_tree$Strain,
+  value = meta_tree$Glucose_OD600_ave
+)
+gluc_df <- gluc_df[!is.na(gluc_df$value), ]
+
+cat(
+  "DATASET_GRADIENT\n",
+  "SEPARATOR TAB\n",
+  "DATASET_LABEL\tGlucose OD600 (avg)\n",
+  "COLOR\t#000000\n",
+  "STRIP_WIDTH\t25\n",
+  "COLOR_MIN\t", glucose_low,  "\n",
+  "COLOR_MAX\t", glucose_high, "\n",
+  "USE_MID_COLOR\t1\n",
+  "COLOR_MID\t", glucose_mid,  "\n",
+  "LEGEND_TITLE\tGlucose OD600 (avg)\n",
+  "\nDATA\n",
+  sep = "",
+  file = "itol_annotations/glucose_gradient.txt"
+)
+write.table(gluc_df, "itol_annotations/glucose_gradient.txt",
+            sep = "\t", append = TRUE, row.names = FALSE,
+            col.names = FALSE, quote = FALSE)
+
+
+cat("\nAll 4 files written to:", normalizePath("itol_annotations"), "\n")
+
+
+
+```
+
+Now working with the reference genes that Sohini gave me, trying to understand what they mean 
+
+#### ANTHRONE AND GENOMES 
+
+Prepare the glucose file that will be used. I will use Anthrone file prepared in the MucoidEPS.Rmd code, but the differnece is that Sohini used a different number for the strains. 
+
+```{r}
+
+Anthrone_mean <- read_xlsx(here("Tables", "Anthrone_mean.csv"))
+#View(Anthrone_mean)
+## Will change the name of Anthrone_mean from Strain to "Strain_Code. The idea is that only "Strain" has the AVT.. form to match Sohini's labeling system.
+Anthrone_mean_rename <- Anthrone_mean %>% rename("Strain_Code" = "Strain")
+#View(Anthrone_mean_rename)
+#I will merge this wiht the Strain_codes information that I am also using for Nodule branching manuscript 
+Codes <- read_xlsx(here("Data_input", "Strain_codes_ForTree.xlsx"))
+# I will remove Morphology and Pair as they are not relevant 
+Codes <- Codes %>% select(-c("Morphology", "Pairs"))
+#View(Codes)
+
+## I will join them by Strain_Code name 
+
+Anthrone_phenotype <- left_join(Anthrone_mean_rename, Codes, by = "Strain_Code")
+
+# For this to be the final file, what I will do is giong to be only select two columns 
+
+Anthrone_phenotype <- Anthrone_phenotype %>% select("Strain", "Glucose_OD600_ave")
+
+write_xlsx(Anthrone_phenotype, here("Tables", "Anthrone_phenotype_forGenomes.xlsx"))
+
+
+
+```
+
+### GWAS
+
+Edit the vcf files, both reference and pangenome. Step by step
+
+```{r}
+
+## I will convert the data into standard R matrix or dataframe. 
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("VariantAnnotation")
+
+library(vcfR)
+
+
+vcf_reference <- read.vcfR(here("Data_input", "strain_118_variants.vcf")) ##Sohini gave me this file through slack, I have moved it to my Github folder
+#vcf
+#head(vcf@meta, 40)
+
+#View(vcf)
+gt_reference <- extract.gt(vcf_reference, element = "GT")
+View(gt)
+
+### To extract the information in R I need getFIX(vcf)
+
+fix_df <- as.data.frame(getFIX(vcf_reference)) #getFIX is used to extract the first 8 columns of a VCF file that has the information on CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO. 
+
+full_table <- cbind(fix_df[, c("CHROM", "POS", "REF", "ALT")], gt_reference)
+#View(full_table)
+
+### The plan is now to replace 0/0 with 0, 1/1 with 1, 2/2 because those are homozygous, while I keep the heterozygous as NA, for example 0/1, 1/0, 1/2, 2/1. The ones that are alreasy missing will also stay as NA. 
+
+full_table_recoded <- full_table ## I will do the changes on full_table_recorded
+
+sample_cols <- setdiff(colnames(full_table), c("CHROM", "POS", "REF", "ALT")) #I am requesting all the column names except for the 4 column names chrom, pos, ref, alt
+
+## I will now make the changes
+full_table_recoded
+full_table_recoded[, sample_cols]
+gt_mat <- as.matrix(full_table_recoded[, sample_cols]) #I will store this as a matrix 
+gt_mat
+#View(gt_mat)
+gt_mat[gt_mat == "0/0"] <- "0"
+gt_mat[gt_mat == "1/1"] <- "1"
+gt_mat[gt_mat == "2/2"] <- "2"
+## I don't see values with 3/ or /3
+
+
+het_patterns <- c("0/1", "1/0", "0/2", "2/0", "1/2", "2/1") # This is how het looks like 
+
+gt_mat[gt_mat %in% het_patterns] <- NA
+
+gt_mat[gt_mat %in% c("./.", ".|.")] <- NA # This is how NA are usually produced in vcf files although I think in this case it is actually written as "NA".
+mode(gt_mat) <- "numeric"
+
+full_table_recoded[, sample_cols] <- gt_mat
+full_table_recoded ## This is the file with the 0, 1, 2 and NAs!.
+
+
+sample_cols[1:5]
+
+sapply(full_table_recoded[, sample_cols[1:5]], class)# Check if the values of samples except the columns are numeric
+table(full_table_recoded$AVT1, useNA = "ifany") #Count per isolate. Wow.
+unique(unlist(full_table_recoded[, sample_cols]))#Check if there are things not recorded. Everything seems to have been recorded as only 0, 1, 2 and NA exist. 
+
+
+
+
+### I will do the same for the pangenome #########
+
+
+
+vcf_pangenome <- read.vcfR(here("Data_input", "pan_genome_variants.vcf")) ##Sohini gave me this file through slack, I have moved it to my Github folder
+
+gt_pangenome <- extract.gt(vcf_pangenome, element = "GT")
+#View(gt)
+
+View(gt)
+
+### To extract the information in R I need getFIX(vcf)
+
+fix_df <- as.data.frame(getFIX(vcf_pangenome)) #getFIX is used to extract the first 8 columns of a VCF file that has the information on CHROM, POS, ID, REF, ALT, QUAL, FILTER, INFO. 
+
+full_table <- cbind(fix_df[, c("CHROM", "POS", "REF", "ALT")], gt_pangenome)
+#View(full_table)
+
+### The plan is now to replace 0/0 with 0, 1/1 with 1, 2/2 because those are homozygous, while I keep the heterozygous as NA, for example 0/1, 1/0, 1/2, 2/1. The ones that are alreasy missing will also stay as NA. 
+
+full_table_recoded_pangenome <- full_table ## I will do the changes on full_table_recorded
+
+sample_cols <- setdiff(colnames(full_table), c("CHROM", "POS", "REF", "ALT")) #I am requesting all the column names except for the 4 column names chrom, pos, ref, alt
+
+## I will now make the changes
+full_table_recoded_pangenome
+full_table_recoded_pangenome[, sample_cols]
+gt_mat <- as.matrix(full_table_recoded_pangenome[, sample_cols]) #I will store this as a matrix 
+gt_mat
+#View(gt_mat)
+gt_mat[gt_mat == "0/0"] <- "0"
+gt_mat[gt_mat == "1/1"] <- "1"
+gt_mat[gt_mat == "2/2"] <- "2"
+## I don't see values with 3/ or /3
+
+
+het_patterns <- c("0/1", "1/0", "0/2", "2/0", "1/2", "2/1") # This is how het looks like 
+
+gt_mat[gt_mat %in% het_patterns] <- NA
+
+gt_mat[gt_mat %in% c("./.", ".|.")] <- NA # This is how NA are usually produced in vcf files although I think in this case it is actually written as "NA".
+mode(gt_mat) <- "numeric"
+
+full_table_recoded_pangenome[, sample_cols] <- gt_mat
+full_table_recoded_pangenome ## This is the file with the 0, 1, 2 and NAs!.
+
+
+sample_cols[1:5]
+
+sapply(full_table_recoded[, sample_cols[1:5]], class)# Check if the values of samples except the columns are numeric
+table(full_table_recoded$AVT1, useNA = "ifany") #Count per isolate. Wow.
+unique(unlist(full_table_recoded[, sample_cols]))#Check if there are things not recorded. Everything seems to have been recorded as only 0, 1, 2 and NA exist. 
+
+
+###### Gene presence/absence ##########
+
+#With the document that Kayla sent me 
+
+PrescenceAbsence_original <- read.csv("~/OneDrive - The Pennsylvania State University/Burghardt Lab Shared Folder/Projects/NIFA-AVT-AlfalfaProjects/Aim1bAVT_StrainCollection/Chapter1_Partners_Mariale/Analysis/Genome_EPS/gene_presence_absence.Rtab", sep = "", header = TRUE)
+#View(Anthrone_Genome)## This one has a very weird labeling system that doesn't match mine or Sohini's labelint system, I will create a new file that matches this better
+
+View(PrescenceAbsence_original)
+
+unique_characters <- unique(unlist(strsplit(as.character(unlist(PrescenceAbsence_original[, 2:120])), "")))
+unique_characters
+
+
+
+```
+
+
+Transformation for GWAS
+
+I will use pyseer for GWAS, which will require the tree constructed for the kinship matrix, and the vcf file of the reference to run the GWAS
+
+
+```{r}
+## The first part of the code is to tell R where to look (columns in sample_cols), and teh second is to state what to assess, that is the hom and het. 
+
+
+## The phenotype form is 
+
+Anthrone_phenotype_forGenomes <- read_xlsx(here("Tables", "Anthrone_phenotype_forGenomes.xlsx"))
+Anthrone_phenotype_forGenomes
+
+### Account for population structure. 
+
+## I will build the kinship matrix from the pangenome data that Sohini gave me. It is recommended to use a different SNP set that the one I am testing, so I will not use the one with the reference. 
+
+### I transfered Sohini's pangenome to Data_input
+
+
+vcf_pangenome <- read.vcfR(here("Data_input", "pan_genome_variants.vcf")) ##Sohini gave me this file through slack, I have moved it to my Github folder
+
+```
+
+
+### Prepare documents for GWAS
+
+```{r}
+
+## I will use the original vcf with the reference named vcf_reference
+
+vcf_reference <- read.vcfR(here("Data_input", "strain_118_variants.vcf")) ##Sohini gave me this file through slack, I have moved it to my Github folder
+
+
+## I will use the phenotype 
+
+Anthrone_phenotype_forGenomes <- read_xlsx(here("Tables", "Anthrone_phenotype_forGenomes.xlsx"))
+## I will use pyseer 
+
+phenotype_for_pyseer <- data.frame(
+  Strain = Anthrone_phenotype_forGenomes$Strain,
+  Glucose = Anthrone_phenotype_forGenomes$Glucose_OD600_ave
+)
+#View(phenotype_for_pyseer)
+### I will remove strain 121. Pyseer that is the program I iwll use for GWAS will only match the strains the exist in the vcf and the phenotype. 
+phenotype_for_pyseer <- phenotype_for_pyseer %>% filter(Strain != "AVT121")
+
+## I will remove AVT18
+
+phenotype_for_pyseer_NoAVT18 <- phenotype_for_pyseer %>% filter(Strain != "AVT18")
+View(phenotype_for_pyseer_NoAVT18)
+## Pangenome 
+
+vcf_pangenome <- read.vcfR(here("Data_input", "pan_genome_variants.vcf")) ##Sohini gave me this file through slack, I have moved it to my Github folder
+
+### I will not filter out anything yet especially the het zones. I will create a new GWAS folder 
+
+write.vcf(vcf_pangenome, file = here("Data_input", "GWAS", "vcf_pangenome.vcf.gz"))
+write.vcf(vcf_reference, file = here("Data_input", "GWAS", "test_variants.vcf.gz"))
+write.table(phenotype_for_pyseer,
+            file = here("Data_input", "GWAS", "phenotype.tsv"),
+            sep = "\t",
+            quote = FALSE,
+            row.names = FALSE)
+## The phenotype file without AVT18
+
+write.table(phenotype_for_pyseer_NoAVT18,
+            file = here("Data_input", "GWAS", "phenotype_NoAVT18.tsv"),
+            sep = "\t",
+            quote = FALSE,
+            row.names = FALSE)
+
+
+## I will need the tree that Sohini constructed using the pangenome data instead of teh vcf_pangenome because of an update in the pyseer package. 
+
+tree<-read.tree("/Users/mariaalejandragilpolo/OneDrive - The Pennsylvania State University/Burghardt, Liana T's files - GitHub/AVT_SingleInoculation/Data/AVT_single_copy_core_concat.fasta.treefile")
+
+write.tree(tree, file = "/Users/mariaalejandragilpolo/Documents/GitHub/Rhizobia_EPS_Manuscript/Data_input/GWAS/tree.nwk")
+
+
+
+## I will not remove 121 from the vcf files because it shoudl still appear in the kinship matrix to be tested for population structure. 
+## I will run the GWAS with and without AVT18
+
+## Running it with AVT18 
+
+GWAS <- read_tsv(here("Data_input", "GWAS", "gwas_results.tsv"))
+View(GWAS_AVT18)
+
+GWAS_NoAVT18 <- read_tsv(here("Data_input", "GWAS", "gwas_results_NoAVT18.tsv")) ## I think the top candidates are weird set of nucleotides. There are no overlap in candidates with and without the GWAS. 
+#View(GWAS_NoAVT18)
+
+
+
+```
+
+
+
+How different are the pairs 
+
+I have different files snp pangenome that sohini generated, I think it has the SNPs of the core genes 
+I have the SNP reference that shows the genes that are mapped with a reference genome 
+I can use both of these. 
+
+```{r}
+
+Codes <- read_excel("/Users/mariaalejandragilpolo/Downloads/Strain_codes_ForTree.xlsx") 
+#View(Codes)
+
+
+# Sample columns in your full_table_recoded (0/1/NA matrix)
+sample_cols <- setdiff(colnames(full_table_recoded), c("CHROM", "POS", "REF", "ALT"))
+
+# Function: count SNP differences between two isolates, ignoring NAs in either
+snp_distance <- function(isolate1, isolate2, gt_matrix) {
+  g1 <- gt_matrix[[isolate1]]
+  g2 <- gt_matrix[[isolate2]]
+  
+  # Only compare positions where both have non-NA calls
+  valid <- !is.na(g1) & !is.na(g2)
+  n_compared <- sum(valid)
+  n_diff <- sum(g1[valid] != g2[valid])
+  
+  return(list(
+    n_diff      = n_diff,
+    n_compared  = n_compared,
+    pct_diff    = 100 * n_diff / n_compared
+  ))
+}
+
+# Define your 19 pairs as a data frame
+pairs <- data.frame(
+  pair_id = 1:19,
+  dry     = c("AVT98", "AVT99", "AVT100", "AVT101", "AVT102", "AVT103", "AVT104", "AVT105", "AVT106", "AVT107", "AVT108", "AVT111", "AVT112", "AVT115", "AVT116", "AVT117", "AVT118", "AVT119", "AVT120"),   # fill in your actual pair members
+  mucoid  = c("AVT29", "AVT15", "AVT16", "AVT91", "AVT12", "AVT3", "AVT4", "AVT18", "AVT92", "AVT93", "AVT94", "AVT41", "AVT49", "AVT95", "AVT96", "AVT86", "AVT78", "AVT73", "AVT72")
+)
+View(pairs)
+
+# Compute distance for each pair
+pairs$snps_different <- NA_integer_
+pairs$snps_compared  <- NA_integer_
+pairs$pct_different  <- NA_real_
+
+for (i in 1:nrow(pairs)) {
+  result <- snp_distance(pairs$dry[i], pairs$mucoid[i], full_table_recoded)
+  pairs$snps_different[i] <- result$n_diff
+  pairs$snps_compared[i]  <- result$n_compared
+  pairs$pct_different[i]  <- result$pct_diff
+}
+View(full_table_recoded)
+# View the results
+View(pairs[order(pairs$snps_different), ])
+#View(pairs[order(pairs$snps_different), ]) I am getting two pairs that have less than 5 or 6 SNPs of difference. 
+
+## I will use now the whole pangenome table 
+
+for (i in 1:nrow(pairs)) {
+  result <- snp_distance(pairs$dry[i], pairs$mucoid[i], full_table_recoded_pangenome)
+  pairs$snps_different[i] <- result$n_diff
+  pairs$snps_compared[i]  <- result$n_compared
+  pairs$pct_different[i]  <- result$pct_diff
+}
+
+View(full_table_recoded_pangenome)
+
+View(pairs[order(pairs$snps_different), ])
+
+
+```
+
+
+
+### Anthrone and Genomes
+
+I met with Kayla for the prescence absense part and her recommendation was to first reduce the number of strains I want to evaluate. This will be done in the roar collab where the files are stored.
+
+```{r}
+
+Anthrone_subset <- read_excel("~/OneDrive - The Pennsylvania State University/Burghardt Lab Shared Folder/Projects/NIFA-AVT-AlfalfaProjects/Aim1bAVT_StrainCollection/Chapter1_Partners_Mariale/Analysis/Genome_EPS/Classification_PresenceAbsence.xlsx", sheet = 1)
+
+View(Anthrone_subset)
+Anthrone_Genome <- read.csv("~/OneDrive - The Pennsylvania State University/Burghardt Lab Shared Folder/Projects/NIFA-AVT-AlfalfaProjects/Aim1bAVT_StrainCollection/Chapter1_Partners_Mariale/Analysis/Genome_EPS/gene_presence_absence.Rtab", sep = "", header = TRUE)
+Anthrone_Genome
+
+#View(Anthrone_Genome)
+# I will add "strain_" to the names of Anthrone subset to match the label in the genome 
+#View(Anthrone_Genome)
+
+#View(Anthrone_subset)
+
+## Reformat the table. Send strain as row headers and send the genes column names. 
+
+Anthrone_Genome_tranposed <- setNames(
+  data.frame(t(Anthrone_Genome[,-1])), 
+  Anthrone_Genome[,1])
+
+#View(Anthrone_Genome_tranposed)
+
+Anthrone_Genome_tranposed <- Anthrone_Genome_tranposed %>% 
+  tibble::rownames_to_column(var = "Name")
+#View(Anthrone_Genome_tranposed)
+
+## Merge with the data from the subset of strains 
+#View(Anthrone_subset)
+#PresenceAbsence <- right_join(Anthrone_Genome_tranposed, Anthrone_subset, by = "Name")
+#View(PresenceAbsence)
+#library(dplyr)
+#library(purrr)
+#library(broom)
+
+#PresenceAbsence$Morphology <- factor(PresenceAbsence$Morphology, levels = c("Dry", "Mucoid"))
+#genes <- setdiff(colnames(PresenceAbsence), c("Name", "Morphology"))
+#fisher_results <- map_dfr(genes, function(g) {
+  
+#  tab <- table(PresenceAbsence$Morphology, PresenceAbsence[[g]])
+  
+  # Skip genes with no variation
+#  if (any(dim(tab) < 2)) return(NULL)
+  
+#  res <- fisher.test(tab)
+  
+#  tibble(
+#    Gene = g,
+#    p_value = res$p.value,
+#    odds_ratio = res$estimate
+#  )
+#})
+
+#fisher_results <- fisher_results %>%
+#  mutate(p_adj = p.adjust(p_value, method = "fdr")) %>%
+#  arrange(p_value)#
+
+#View(fisher_results)
+
+### i AM ADDING MORE STRAINS to the description. I have chosen 21 samples  of mucoid instead of the only 7 mucoid I had before because of hte p-values I got
+
+###
+ 
+# Now I will use the quantitative data. 
+#
+
+Anthrone
+
+Anthrone_complete <-  Anthrone %>% mutate(Name = paste0("strain_", Strain)) %>% dplyr::select(c("Name", "Glucose_OD600"))
+Anthrone_complete
+
+Anthrone_subset_mean <- Anthrone_complete %>%
+  group_by(Name) %>%
+  summarise(Glucose_OD600_ave = mean(Glucose_OD600))
+
+#View(Anthrone_subset_mean)
+
+Anthrone_Genome_tranposed <- setNames(
+  data.frame(t(Anthrone_Genome[,-1])), 
+  Anthrone_Genome[,1])
+
+
+Anthrone_Genome_tranposed <- Anthrone_Genome_tranposed %>% 
+  tibble::rownames_to_column(var = "Name")
+
+View(Anthrone_Genome_tranposed)
+
+
+PresenceAbsence <- right_join(Anthrone_Genome_tranposed, Anthrone_subset_mean, by = "Name")
+View(PresenceAbsence)
+
+### I will remove strain 121 because the strain did not grow 
+
+PresenceAbsence <- PresenceAbsence %>% filter(Name != "strain_121")
+
+genes <- setdiff(
+  colnames(PresenceAbsence),
+  c("Name", "Glucose_OD600_ave")
+)
+
+genes
+
+wilcox_results <- map_dfr(genes, function(g) {
+
+  x <- PresenceAbsence[[g]]
+
+  if (length(unique(x)) < 2) return(NULL)
+
+  freq <- mean(x == 1, na.rm = TRUE)
+  if (freq < 0.05 || freq > 0.95) return(NULL)
+
+  res <- wilcox.test(
+    PresenceAbsence$Glucose_OD600_ave ~ x,
+    exact = FALSE
+  )
+
+  tibble(
+    Gene = g,
+    gene_freq = freq,
+    n_present = sum(x == 1),
+    n_absent  = sum(x == 0),
+    p_value = res$p.value,
+    median_present = median(PresenceAbsence$Glucose_OD600_ave[x == 1]),
+    median_absent  = median(PresenceAbsence$Glucose_OD600_ave[x == 0]),
+    delta_median   = median_present - median_absent
+  )
+}) %>%
+  mutate(p_adj = p.adjust(p_value, method = "fdr")) %>%
+  arrange(p_value)
+
+View(wilcox_results)
+
+```
+
+
+
+### Assessing contamination 
+
+
+```{r}
+
+library(dplyr)
+
+# --- Per-isolate breakdown of the original genotype calls ---
+classify_call <- function(x) {
+  if (is.na(x)) return("missing")
+  parts <- strsplit(as.character(x), "[/|]")[[1]]
+  if (length(unique(parts)) == 1) {
+    if (parts[1] == "0") return("hom_ref") else return("hom_alt")
+  }
+  return("het")
+}
+
+per_isolate <- sapply(full_table[, sample_cols], function(col) {
+  table(factor(vapply(col, classify_call, character(1)),
+               levels = c("hom_ref", "hom_alt", "het", "missing")))
+})
+per_isolate <- as.data.frame(t(per_isolate))
+per_isolate$total <- rowSums(per_isolate)
+per_isolate$pct_het     <- 100 * per_isolate$het     / per_isolate$total
+per_isolate$pct_missing <- 100 * per_isolate$missing / per_isolate$total
+
+# Sort to find the worst offenders
+per_isolate[order(-per_isolate$pct_het), ]      # likely contaminated isolates
+
+View(per_isolate[order(-per_isolate$pct_het), ])
+
+per_isolate[order(-per_isolate$pct_missing), ]  # low-coverage isolates
+
+
+
+
+
+# Per-site het and missing counts
+per_site_het <- apply(full_table[, sample_cols], 1, function(row) {
+  sum(vapply(row, function(x) {
+    if (is.na(x)) return(FALSE)
+    parts <- strsplit(as.character(x), "[/|]")[[1]]
+    length(unique(parts)) > 1
+  }, logical(1)))
+})
+
+per_site_missing <- rowSums(is.na(full_table[, sample_cols]))
+
+site_audit <- full_table[, c("CHROM", "POS", "REF", "ALT")]
+site_audit$het_count     <- per_site_het
+site_audit$missing_count <- per_site_missing
+site_audit$pct_het_site     <- 100 * per_site_het     / length(sample_cols)
+site_audit$pct_missing_site <- 100 * per_site_missing / length(sample_cols)
+
+# Distribution of het counts per site — is it concentrated?
+hist(site_audit$pct_het_site, breaks = 50,
+     main = "Hets per site across 117 isolates",
+     xlab = "% of isolates het at this site")
+
+# How many sites are "noisy" by various thresholds?
+sum(site_audit$pct_het_site > 10)   # >10% of isolates het here
+sum(site_audit$pct_het_site > 20)
+sum(site_audit$pct_het_site > 50)
+
+# Where on the genome are the noisy sites?
+table(site_audit$CHROM[site_audit$pct_het_site > 10])
+
+
+```
+Clean up 
+
+```{r}
+# Drop sites where >10% of isolates are het OR >10% are missing
+good_sites <- site_audit$pct_het_site <= 10 & site_audit$pct_missing_site <= 10
+sum(good_sites) ; sum(!good_sites)   # how many kept vs dropped
+
+full_table_clean <- full_table[good_sites, ]
+
+# Re-audit per isolate on the cleaned data
+per_isolate_clean <- sapply(full_table_clean[, sample_cols], function(col) {
+  table(factor(vapply(col, classify_call, character(1)),
+               levels = c("hom_ref", "hom_alt", "het", "missing")))
+})
+per_isolate_clean <- as.data.frame(t(per_isolate_clean))
+per_isolate_clean$pct_het <- 100 * per_isolate_clean$het /
+  rowSums(per_isolate_clean)
+summary(per_isolate_clean$pct_het)
+
+## See it per isolate 
+
+
+# Make sure strain IDs are a proper column (they're currently rownames)
+per_isolate_clean$isolate <- rownames(per_isolate_clean)
+colnames(per_isolate_clean)
+
+# Reorder columns for readability
+per_isolate_clean <- per_isolate_clean[, c("isolate", "hom_ref", "hom_alt",
+                                           "het", "missing", "pct_het")]
+
+
+View(per_isolate_clean)
+
+# Open it in the RStudio viewer
+View(per_isolate_clean)
+
+# Or print sorted worst-to-best
+head(per_isolate_clean[order(-per_isolate_clean$pct_het), ], 20)
+
+# Or best-to-worst
+head(per_isolate_clean[order(per_isolate_clean$pct_het), ], 20)
+
+
+## Continue assessing: 
+
+
+# For an isolate of interest, look at where its hets sit
+isolate <- "AVT65"
+het_positions <- full_table_clean[
+  vapply(full_table_clean[[isolate]], function(x) {
+    if (is.na(x)) return(FALSE)
+    parts <- strsplit(as.character(x), "[/|]")[[1]]
+    length(unique(parts)) > 1
+  }, logical(1)),
+  c("CHROM", "POS")
+]
+
+# Plot positions across the genome
+library(ggplot2)
+ggplot(het_positions, aes(x = as.numeric(POS))) +
+  geom_histogram(bins = 200) +
+  facet_wrap(~ CHROM, scales = "free_x") +
+  labs(title = paste("Het positions in", isolate))
+
+
+## Run for all the isolates 
+
+
+plot_hets_for <- function(isolate, data = full_table_clean) {
+  het_pos <- data[
+    vapply(data[[isolate]], function(x) {
+      if (is.na(x)) return(FALSE)
+      parts <- strsplit(as.character(x), "[/|]")[[1]]
+      length(unique(parts)) > 1
+    }, logical(1)),
+    c("CHROM", "POS")
+  ]
+  het_pos$isolate <- isolate
+  het_pos
+}
+
+suspects <- c("AVT65", "AVT81", "AVT25", "AVT92", "AVT106", "AVT33")
+all_hets <- do.call(rbind, lapply(suspects, plot_hets_for))
+
+ggplot(all_hets, aes(x = as.numeric(POS))) +
+  geom_histogram(bins = 200) +
+  facet_grid(isolate ~ CHROM, scales = "free_x") +
+  labs(title = "Het positions across suspect isolates")
+
+
+# Sanity check 
+
+ad <- extract.gt(vcf, element = "AD")
+# Pull AD for AVT18 at het sites and inspect ratios
+
+ad
+
+```
+
+```{r}
+
+### I will now convert the 1/1 in 1 and the 0/0 in 0. Either 0/1 or 1/0 means heterozygous which shoudl be an error when working with bacteria that are haploid 
+
+sample_cols <- setdiff(colnames(full_table), c("CHROM", "POS", "REF", "ALT")) # To keep the name of the strains but remove the informative ones because I need to convert only the "Numeric" ones. 
+sample_cols
+
+
+
+recode_gt <- function(x) {
+  x <- as.character(x)
+  x[x == "0/0"] <- "0" #Has the Ref allele
+  x[x == "1/1"] <- "1" #Has the alternate allele
+  x[x == "0/1"] <- NA
+  x[x == "1/0"] <- NA
+  x[x == "./."] <- NA   # explicit missing calls
+  as.numeric(x)
+}
+
+full_table_numeric <- full_table %>%
+  mutate(across(all_of(sample_cols), recode_gt))
+
+colSums(is.na(full_table_numeric[, sample_cols]))
+
+View(full_table_numeric)
+
+
+
+gt_num <- apply(gt, 2, function(x){ 
+  gsub("0/0","0", ## this means that it has the same allele than the reference
+  gsub("0/1", NA, 
+  gsub("1/0",NA, ## 
+  gsub("1/1","1",
+  gsub("\\./\\.","NA",x)))))
+})
+
+gt_num <- apply(gt_num, 2, as.numeric) # This one has lost the name of the groups 
+
+### Now I want to transpose 
+
+geno_strain_rows <- t(gt_num)
+## I will merge with the phenotype that is the glucose content
+View(geno_strain_rows_df)
+rownames(geno_strain_rows)
+geno_strain_rows_df <- as.data.frame(geno_strain_rows)
+geno_strain_rows_df$Strain_Code <- rownames(geno_strain_rows_df)
+geno_strain_rows_df <- geno_strain_rows_df[, c(ncol(geno_strain_rows_df), 1:(ncol(geno_strain_rows_df)-1))]
+geno_strain_rows_df <- geno_strain_rows %>%
+  as.data.frame() %>%
+  rownames_to_column("Strain_Code")
+
+
+### I will use the same code names I am using 
+Codes <- read_excel("/Users/mariaalejandragilpolo/Downloads/Strain_codes_Edited.xlsx")
+View(Codes)
+## Will merge with Anthone data
+
+Anthrone_mean <- read_excel("/Users/mariaalejandragilpolo/Documents/GitHub/Rhizobia_EPS_Manuscript/Tables/Anthrone_mean.xlsx")
+View(Antone_codes)
+Antone_codes<- merge(Codes, Anthrone_mean, by = "Strain")
+Antone_codes <- Antone_codes %>% dplyr::select(Strain_Code, Glucose_OD600_ave)
+## I will now merge wiht the GWAS data
+colnames(geno_strain_rows_df)
+colnames(Antone_codes)
+
+phenotype <- merge(geno_strain_rows_df, Antone_codes, by = "Strain_Code")
+
+#Install PLINK and GEMMA
+
+### I will add the phenotype to my QC genotypes
+
+fam <- read.table(
+  "~/Downloads/rhizobia_qc.fam",
+  header = FALSE,
+  stringsAsFactors = FALSE
+)  
+
+colnames(fam) <- c("FID","IID","PID","MID","SEX","PHENO_plink")
+head(fam)
+
+## Merge phenotypes onto fam, in fam order
+
+pheno_ordered <- fam %>%
+  left_join(Antone_codes, by = c("IID" = "Strain_Code")) ## There are two strains that were not assessed in the glucose one. One of them is 121 that did not grew in rhizobium defined media. Also I did not streak strain 067, but I know from previous pictures that the glycerol stock does exist. Maybe it got misplaced?
+
+View(pheno_ordered)
+
+complete <- !is.na(pheno_ordered$Glucose_OD600_ave)
+table(complete)
+pheno_ordered <- pheno_ordered[complete, ]
+View(pheno_ordered)
+
+### For Gemma I need to have the same invidiuals, be in the same order and no missing values. I had already done the plink files but I realized a bit late I need to remove AVT121 and AVT67.
+
+### Make a "remove list" for PLINK (in R)
+
+fam <- read.table("~/Downloads/rhizobia_qc.fam",
+                  header = FALSE, stringsAsFactors = FALSE)
+colnames(fam) <- c("FID","IID","PID","MID","SEX","PHENO_plink")
+
+remove_ids <- fam %>%
+  filter(IID %in% c("AVT121", "AVT67")) %>%
+  dplyr::select(FID, IID)
+
+remove_ids ## The two strains I will remove
+
+## Write this file for a PLINK 
+
+write.table(
+  remove_ids,
+  file = "~/Downloads/remove_strains.txt",
+  quote = FALSE,
+  row.names = FALSE,
+  col.names = FALSE
+)
+
+### I removed the two IDs in the terminal using the following code: cd ~/Downloads/plink_mac_20250819
+
+#./plink \
+#  --bfile ../rhizobia_qc \
+#  --remove ../remove_strains.txt \
+#  --allow-extra-chr \
+#  --make-bed \
+#  --out ../rhizobia_qc_115
+
+## Remove from Antone_codes strains AVT121 and AVT67
+Antone_codes
+
+Antone_codes_115 <- Antone_codes %>% filter(!Strain_Code %in% c("AVT121", "AVT67"))
+View(Antone_codes_115)
+
+
+## Read the NEW fam file 
+
+fam115 <- read.table("~/Downloads/rhizobia_qc_115.fam",
+                     header = FALSE, stringsAsFactors = FALSE)
+
+colnames(fam115) <- c("FID","IID","PID","MID","SEX","PHENO_plink")
+
+# Merge phenotypes onto fam 
+
+pheno_ordered <- fam115 %>%
+  left_join(Antone_codes, by = c("IID" = "Strain_Code"))
+pheno_ordered
+sum(is.na(pheno_ordered$Glucose_OD600_ave))
+
+pheno_ordered$Glucose_scaled <- scale(pheno_ordered$Glucose_OD600_ave)[,1]
+pheno_ordered
+
+### I will write down the phenotype that GEMMA needs 
+
+write.table(
+  pheno_ordered$Glucose_scaled,
+  file = "~/Downloads/Glucose.pheno",
+  quote = FALSE,
+  row.names = FALSE,
+  col.names = FALSE
+)
+pheno_ordered$Glucose_scaled
+
+## I will now run GEMMA in the terminal and this time it does have the 115 phenotype glucose
+
+
+
+
+
+## Read the fam for the 115-strain dataset 
+
+fam115 <- read.table(
+  "~/Downloads/rhizobia_qc_115.fam",
+  header = FALSE,
+  stringsAsFactors = FALSE
+)
+head(fam115) ## This has in V6 all -9 which GEMMA is interpreting a as "missing" values. My code failed so now I need to tell GEMMA that the 115 strains are valid by chancing that .fam phenotype column to something non-missing like 1. Then recomput teh kinship. 
+fam115$V6 <- 1
+fam115
+
+### Take a look at the GWAS results 
+
+
+gwas_res <- read_table2("~/Downloads/output/Glucose_GWAS_115.assoc.txt")
+View(gwas_res)
+gwas_res <- gwas_res %>%
+  mutate(
+    log10p = -log10(p_lrt),
+    p_FDR  = p.adjust(p_lrt, method = "BH")
+  )
+
+hits <- gwas_res %>% filter(p_FDR < 0.05)
+hits
+
+
+### Trying to find out the sequences 
+
+gwas_res <- read_table2("~/Downloads/output/Glucose_GWAS_115.assoc.txt")
+bim <- read.table("~/Downloads/rhizobia_qc_115.bim",
+                  header = FALSE, stringsAsFactors = FALSE)
+colnames(bim) <- c("chr_bim","snp","cm","bp","A1","A2")
+
+gwas_annot <- gwas_res %>%
+  left_join(bim, by = c("rs" = "snp")) %>%
+  mutate(
+    log10p = -log10(p_lrt),
+    p_FDR  = p.adjust(p_lrt, method = "BH")
+  )
+
+hits <- gwas_annot %>% filter(p_FDR < 0.05)
+
+head(hits[, c("rs","chr_bim","bp","A1","A2","p_lrt","p_FDR")])
+
+## I want to get the DNA sequence 
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("Biostrings")
+
+library(Biostrings)
+
+
+ref <- readDNAStringSet("~/Downloads/pan_genome_reference.fa")
+names(ref)[1:5] 
+
+seq_group4058 <- ref[["group_4058"]]
+View(seq_group4058)
+seq_group4058_set <- DNAStringSet(seq_group4058)
+
+View(seq_group4058_set)
+
+writeXStringSet(seq_group4058_set, "group_4058.fa")
+
+
+
+snp_seq <- getSeq(ref, names = "group_4058", start = 123, end = 123)
+
+
+### The sequences relevant are group_6241 and group_7635, group_8162 and melA_2
+
+seq_group_6241 <- ref[["group_6241"]]
+seq_group_6241_set <- DNAStringSet(seq_group_6241)
+writeXStringSet(seq_group_6241_set, "~/Downloads/group_6241.fa")
+
+
+seq_group_7635 <- ref[["group_7635"]]
+seq_group_7635_set <- DNAStringSet(seq_group_7635)
+writeXStringSet(seq_group_7635_set, "~/Downloads/group_7635.fa")
+
+
+
+seq_group_8162 <- ref[["group_8162"]]
+seq_group_8162_set <- DNAStringSet(seq_group_8162)
+writeXStringSet(seq_group_8162_set, "~/Downloads/group_8162.fa")
+
+## Read the prokka results in R 
+
+library(rtracklayer)
+library(GenomicRanges)
+library(dplyr)
+
+# 1. Import the GFF from Prokka
+gff <- import("~/Downloads/group_6241_prokka/group_6241.gff")
+
+gff
+
+gff <- import("~/Downloads/group_6241_prokka/group_6241.gff", format="gff3")
+gff
+
+# 2. Keep only CDS entries (or "gene", depending on what Prokka wrote)
+cds <- gff[gff$type == "CDS"]
+cds
+
+library(Biostrings)
+
+dna <- readDNAStringSet("~/Downloads/group_6241_prokka/group_6241.gff")
+dna
+
+# Have a look
+mcols(cds)[, c("ID","gene","product")] %>% head()
+
+```
+
+### Following claude's instructions 
+
+```{r}
+
+vcf <- read.vcfR("/Users/mariaalejandragilpolo/Downloads/pan_genome_variants.vcf")
+
+
+library(vcfR)
+
+gt_mat <- extract.gt(vcf, element = "GT", as.numeric = FALSE)
+
+dosage <- apply(gt_mat, 2, function(x) {
+  x[x == "0/0"] <- 0
+  x[x == "0/1" | x == "1/0"] <- 1
+  x[x == "1/1"] <- 2
+  x[!(x %in% c("0","1","2"))] <- NA   # anything else (./., 1/2, 2/2) → NA
+  as.numeric(x)
+})
+rownames(dosage) <- rownames(gt_mat)
+
+# Filter by missingness and MAF
+site_miss <- rowMeans(is.na(dosage))
+dosage    <- dosage[site_miss < 0.1, , drop = FALSE]
+
+af  <- rowMeans(dosage, na.rm = TRUE) / 2
+maf <- pmin(af, 1 - af)
+dosage <- dosage[!is.na(maf) & maf > 0.05, , drop = FALSE]
+
+# (Optional) one SNP per gene group
+chrom <- getFIX(vcf)[, "CHROM"]
+chrom <- chrom[as.integer(rownames(dosage))]   # align to surviving rows
+# simpler: just skip pruning for now
+
+# Mean-impute
+dosage <- t(apply(dosage, 1, function(x) {
+  x[is.na(x)] <- mean(x, na.rm = TRUE); x
+}))
+
+# --- THE FIX: drop zero-variance SNPs before PCA ---
+site_var <- apply(dosage, 1, var)
+dosage   <- dosage[site_var > 1e-8, ]
+cat("SNPs remaining for PCA:", nrow(dosage), "\n")
+
+# PCA
+X   <- t(dosage)                  # rows = strains, cols = SNPs # CHECK THE TRANSTHING
+pca <- prcomp(X, scale. = TRUE)
+
+var_exp <- pca$sdev^2 / sum(pca$sdev^2)
+plot(pca$x[, 1], pca$x[, 2],
+     xlab = sprintf("PC1 (%.1f%%)", 100 * var_exp[1]),
+     ylab = sprintf("PC2 (%.1f%%)", 100 * var_exp[2]))
+
+pcs <- data.frame(strain = rownames(pca$x), pca$x[, 1:5])
+
+
+
+
+### Now I will merge this with shoot phenotype
+
+
+## Codes_glucose
+
+strain_ids_vcf <- colnames(vcf@gt)[-1]   # drop FORMAT
+length(strain_ids_vcf)                   # should be 117
+head(strain_ids_vcf)
+
+View(Codes_glucose)
+
+Codes_glucose$vcf_id <- Codes_glucose$Strain
+
+drop_strains <- c("AVT18", "AVT67", "AVT121")
+
+
+# Subset the VCF genotype matrix — keep FORMAT column + all strains except the three
+keep_cols <- c("FORMAT", setdiff(colnames(vcf@gt)[-1], drop_strains))
+vcf_sub <- vcf
+vcf_sub@gt <- vcf@gt[, keep_cols]
+
+ncol(vcf_sub@gt) - 1   # should be 114
+
+
+# Now rerun the whole dosage → filter → impute → PCA pipeline on vcf_sub
+# (using the same code from before, just substitute vcf_sub for vcf)
+gt_mat <- extract.gt(vcf_sub, element = "GT", as.numeric = FALSE)
+
+View(gt_mat)
+
+pcs <- data.frame(
+  vcf_id = rownames(pca$x),
+  PC1    = pca$x[, 1],
+  PC2    = pca$x[, 2],
+  PC3    = pca$x[, 3]
+)
+
+Codes_glucose$vcf_id <- Codes_glucose$Strain
+
+df <- merge(Codes_glucose, pcs, by = "vcf_id")
+
+# Drop the three strains
+drop_strains <- c("AVT18", "AVT67", "AVT121")
+df <- df[!df$vcf_id %in% drop_strains, ]
+
+# Also drop any strains with NA in the phenotype
+df <- df[!is.na(df$Glucose_OD600_ave), ]
+
+nrow(df)   # final sample size for your model
+
+pcs <- data.frame(
+  vcf_id = rownames(pca$x),
+  PC1    = pca$x[, 1],
+  PC2    = pca$x[, 2],
+  PC3    = pca$x[, 3]
+)
+
+Codes_glucose$vcf_id <- Codes_glucose$Strain
+
+
+
+
+pcs <- data.frame(
+  vcf_id = rownames(pca$x),
+  PC1    = pca$x[, 1],
+  PC2    = pca$x[, 2],
+  PC3    = pca$x[, 3]
+)
+
+Codes_glucose$vcf_id <- Codes_glucose$Strain
+
+df <- merge(Codes_glucose, pcs, by = "vcf_id")
+
+# Drop the three strains
+drop_strains <- c("AVT18", "AVT67", "AVT121")
+df <- df[!df$vcf_id %in% drop_strains, ]
+
+# Also drop any strains with NA in the phenotype
+df <- df[!is.na(df$Glucose_OD600_ave), ]
+
+nrow(df)   # final sample size for your model
+plot(pca$x[, 1], pca$x[, 2],
+     col = ifelse(rownames(pca$x) %in% drop_strains, "red", "gray50"),
+     pch = 19,
+     xlab = "PC1", ylab = "PC2")
+text(pca$x[drop_strains, 1], pca$x[drop_strains, 2],
+     labels = drop_strains, pos = 4, cex = 0.8)
+
+```
+
+
+
+
+
+
+####################### EXTRA CODE ###########
+
+Old way to make the tree
+### Getting the aesthetics for the tree 
+
+```{r}
+
+
+# Morphology colors
+
+morph_cols <- c(
+  "Mucoid" = "#4eadb9",
+  "Dry" = "#e0ba3e"
+)
+
+# Pair
+
+pair_levels <- levels(meta_tree$Pairs) # They are organized that is why it looks continuous, but this drops the NA
+pair_levels
+
+## Options for colors
+#grDevices::hcl.pals() ## This is for the colors, there is a cheetsheet
+
+## Decided to go for "Dynamic" after testing several colors
+pair_cols <- setNames(
+  grDevices::hcl.colors(length(pair_levels), palette = "Dynamic"), ## I have tried several but Dynamic was the one with best. It is for qualitative and not secuential values. 
+  pair_levels
+)
+
+
+pair_cols
+
+
+```
+
+### Make the cladogram
+
+```{r}
+
+### For basic tree
+
+Strain_Code_Tree_meta <- meta_tree %>%
+  select(Strain, Strain_Code) ## Strain_Code is for the label, Strain is to match Sohini's tree data
+Strain_Code_Tree_meta
+
+## The new operator I am learning about %<+% is an operator that attaches a metadata (in my case Strain_Code_Tree_meta) with a tree (in this case "tree") based on the "label" column (in my case "Strain"). Note, in my case instead of "label" I am using "Strain" but ggtree automatically looks at the first column that I on purpose assigned as "Strain" as you can see in the previous lines. Maybe I need to consider changing "Strain" for "label"? Not sure, the code seems to be working well. 
+
+p <- ggtree(tree, branch.length = "none") %<+% Strain_Code_Tree_meta + ## I removed the branch length on purpose because I wanted to look homogeneous since Sohini's paper will have the original one. But Liana asked me to put back the branches. Since I remove the branch.length then this is called a cladogram, not a phylogram. 
+  geom_tiplab(aes(label = Strain_Code), size = 2.8, offset = 0.02) + ## I want the name of the tips to be the 001, 002 format
+  theme_tree2() +
+  xlim_tree(4)
+
+
+p
+
+## Add the morphology
+p <- p +
+  geom_fruit(
+    data = meta_tree %>% select(Strain, Morphology),
+    geom = geom_tile,
+    mapping = aes(y = Strain, x = "Morphology", fill = Morphology),
+    width = 1,
+    offset = 0.04,
+    inherit.aes = FALSE,
+    color = "white",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(
+    values = morph_cols,
+    name = "Morphology"
+  )
+
+p
+
+## Add glucose
+
+p <- p +
+  ggnewscale::new_scale_fill() +
+  geom_fruit(
+  data = meta_tree %>% select(Strain, Glucose_OD600_ave),
+  geom = geom_tile,
+  mapping = aes(y = Strain, x = "Glucose", fill = Glucose_OD600_ave),
+  width = 1,
+  offset = 0.03,
+  inherit.aes = FALSE,
+  color = "white",
+  linewidth = 0.2
+  ) +
+  scale_fill_gradientn(
+#    colours = diverge_hcl(117,h= c(246, 40), c = 96), ## I really like diverge_hcl for this trait
+   colours = colorRamps::magenta2green(117), ## Liana suggested colorRamps, thsi was my favorite out of th eoptions but I am not convinced. Link: chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://www.nceas.ucsb.edu/sites/default/files/2020-04/colorPaletteCheatsheet.pdf
+    na.value = "white",
+    name = "Glucose"
+  )
+
+
+p
+
+
+## Add the pair
+p <- p +
+  ggnewscale::new_scale_fill() +
+  geom_fruit(
+    data = meta_tree %>% select(Strain, Pairs),
+    geom = geom_tile,
+    mapping = aes(y = Strain, x = "Pair", fill = Pairs),
+    width = 1,
+    offset = 0.03,
+    inherit.aes = FALSE,
+    color = "white",
+    linewidth = 0.25
+  ) +
+  scale_fill_manual(
+    values = pair_cols, na.value = "white", name = "Pair") +
+  geom_fruit(
+    data = meta_tree %>% select(Strain, Pairs),
+    geom = geom_text,
+    mapping = aes(y = Strain, x = "Pair", label = Pairs),
+    inherit.aes = FALSE,
+    size = 2.2,
+    color = "black"
+  )
+
+p
+
+ggsave(
+  "AVT_tree_all.pdf_withlegends.pdf",
+  plot = p,
+  width = 8,
+  height = 15,
+  units = "in"
+)
+
+#no legends
+p <- p + theme(legend.position = "none")
+p
+ggsave(
+  "AVT_tree_all.pdf",
+  plot = p,
+  width = 10,
+  height = 20,
+  units = "in"
+)
+
+
+
+
+```
+
+Work with how Sohini's tree should look originally (including the size of the branches)
+
+### Make the phylogram 
+
+I have tried to include other traits but the code that I used for the cladogram doesn't work 
+
+```{r}
+############ this one worked
+
+p_phylogram <- ggtree(tree) %<+% meta_tree +
+  geom_tiplab(aes(label = Strain_Code), size = 2.5, offset = 0.0003) +
+  geom_tippoint(aes(fill = Morphology), shape = 21, size = 1.8, color = "black") +
+  scale_fill_manual(
+    values = morph_cols,
+    name = "Morphology"
+  ) +
+  theme_tree2()
+p_phylogram
+############ this one worked
+#
+
+
+
+p_phylogram <- ggtree(tree) %<+% Strain_Code_Tree_meta +
+  geom_tiplab(aes(label = Strain_Code), size = 2.5, offset = 0.0003) +
+  geom_tippoint(aes(fill = Morphology), shape = 21, size = 1.8, color = "black") +
+  scale_fill_manual(
+    values = morph_cols,
+    name = "Morphology"
+  ) +
+  theme_tree2()
+
+
+
+
+
+p_phylogram <- p_phylogram + theme(legend.position = "none")
+p_phylogram
+ggsave(
+  "AVT_tree_all_phylogram.pdf",
+  plot = p_phylogram,
+  width = 5,
+  height = 15,
+  units = "in"
+)
+
+p_phylogram
+
+p_phylogra_flipped <- p_phylogram + coord_flip()
+p_phylogra_flipped
+
+p_phylogra_flipped <- p_phylogra_flipped + theme(legend.position = "none")
+p_phylogra_flipped
+ggsave(
+  "AVT_tree_all_phylogram_flipped.pdf",
+  plot = p_phylogra_flipped,
+  width = 25,
+  height =15,
+  units = "in"
+)
+
+library(ggtree)
+library(ggtreeExtra)
+library(ggplot2)
+library(dplyr)
+
+p <- ggtree(tree) %<+% meta_tree + ## This meta_tree_plot has all the values I need.
+  geom_tiplab(
+    aes(label = Strain_Code),
+    align     = TRUE,          # <- aligns all labels to the same x
+    linetype  = "dashed",      # <- dashed guide lines
+    linesize  = 0.3,
+    size      = 2.5,
+    offset    = 0.0001         # small nudge from the tip
+  ) +
+  # Morphology column
+  geom_fruit(
+    geom     = geom_tile,
+    mapping  = aes(y = label, fill = Morphology),
+    width    = 0.0005,         # tile width in tree units — tune to your scale bar
+    offset   = 0.15,           # distance from the tip labels (as fraction of tree width)
+    pwidth   = 0.05
+  ) +
+  scale_fill_manual(
+    name   = "Morphology",
+    values = morph_cols,
+    guide  = guide_legend(order = 1)
+  ) +
+  # Start a new fill scale for the next column
+  ggnewscale::new_scale_fill() +
+  # Glucose gradient column
+  geom_fruit(
+    geom    = geom_tile,
+    mapping = aes(y = label, fill = Glucose_OD600_ave),
+    width   = 0.0005,
+    offset  = 0.05,
+    pwidth  = 0.05
+  ) +
+  scale_fill_viridis_c(
+    name     = "Glucose OD600",
+    option   = "C",
+    na.value = "white",
+    guide    = guide_colorbar(order = 2)
+  ) +
+  ggnewscale::new_scale_fill() +
+  # Pairs column
+  geom_fruit(
+    geom    = geom_tile,
+    mapping = aes(y = label, fill = Pairs),
+    width   = 0.0005,
+    offset  = 0.05,
+    pwidth  = 0.05
+  ) +
+  scale_fill_manual(
+    name     = "Pair",
+    values   = pair_cols,
+    na.value = "white",
+    guide    = guide_legend(order = 3, ncol = 2)
+  ) +
+  theme(
+    legend.position = "right",
+    legend.key.size = unit(0.4, "cm")
+  )
+
+
+
+p
+
+```
+
+
+
+
+
+
+
+Where are the strains that Liz chose?
+
+
+Liz used strain 001, 012, 044, 059, 070, 077, 112, 117
+
+
+```{r}
+
+Codes <- read_excel("/Users/mariaalejandragilpolo/Downloads/Strain_codes_ForTree.xlsx") #Has all the 117 strains
+#View(Codes)
+Codes_Liz <- Codes %>%
+  mutate(
+    Liz = ifelse(Strain_Code %in% c("001", "012", "044", "059", "070", "077", "112", "117"), "Chosen", NA)
+  )
+#View(Codes_Liz)
+
+
+
+#View(Codes_glucose)
+meta_tree <- meta_raw %>%
+  select(-any_of("label")) %>%
+  left_join(
+    Codes_Liz %>%
+      select(-any_of("label")) %>%
+      select(Strain, Strain_Code, Pairs, Liz),
+    by = "Strain"
+  ) %>%
+  mutate(
+    label = Strain,
+    Morphology = recode(Morphology,
+                        "R" = "Mucoid",
+                        "P" = "Dry"),
+    Morphology = factor(Morphology, levels = c("Mucoid", "Dry")),
+    pair_status = ifelse(is.na(Pairs), "No pair", "Paired")
+  ) #%>%
+#View(meta_tree)
+#  filter(!label %in% tips_to_remove) ### Remove these from the metadata
+
+
+meta_tree_plot <- meta_tree %>%
+  select(label, Strain_Code, Morphology, Pairs, Liz) %>%
+  mutate(
+    Morphology = factor(Morphology, levels = c("Mucoid", "Dry")),
+    Pairs = ifelse(is.na(Pairs), "No pair", as.character(Pairs)),
+    Pairs = factor(Pairs),
+    Pair_label = ifelse(Pairs == "No pair", "", as.character(Pairs))
+  )
+meta_tree_plot
+# Morphology
+morph_cols <- c(
+  "Mucoid" = "#4eadb9",
+  "Dry" = "#e0ba3e"
+)
+
+#LIZ
+
+#Liz_cols <- c(
+#  "Chosen" = "red",
+#  "NA" = "white"
+#)
+
+meta_tree_plot$Liz <- dplyr::na_if(meta_tree_plot$Liz, "NA")
+meta_tree_plot$Liz[meta_tree_plot$Liz == "NA"] <- NA
+Liz_cols <- c("Chosen" = "red")
+scale_fill_manual(
+  values = Liz_cols,
+  na.value = "white",
+  name = "Liz"
+)
+meta_tree_plot$Liz <- dplyr::na_if(meta_tree_plot$Liz, "NA")
+
+Liz_cols <- c("Chosen" = "red")
+
+
+# Pair
+
+
+### I run into a problem with duplications of columns with meta_tree so I am subsetting it 
+label_df <- meta_tree_plot %>%
+  select(label, Strain_Code)
+
+p <- ggtree(tree, branch.length = "none") %<+% label_df +
+  geom_tiplab(aes(label = Strain_Code), size = 2.8, offset = 0.02) +
+  theme_tree2() +
+  xlim_tree(4)
+
+
+p
+
+## Add the morphology
+p <- p +
+  geom_fruit(
+    data = meta_tree_plot %>% select(label, Morphology),
+    geom = geom_tile,
+    mapping = aes(y = label, x = "Morphology", fill = Morphology),
+    width = 1,
+    offset = 0.04,
+    inherit.aes = FALSE,
+    color = "white",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(
+    values = morph_cols,
+    name = "Morphology"
+  )
+
+
+## Add Liz
+
+
+p <- p +
+  ggnewscale::new_scale_fill() +
+  geom_fruit(
+    data = meta_tree_plot %>% select(label, Liz),
+    geom = geom_tile,
+    mapping = aes(y = label, x = "Liz", fill = Liz),
+    width = 1,
+    offset = 0.04,
+    inherit.aes = FALSE,
+    color = "white",
+    linewidth = 0.2
+  ) +
+  scale_fill_manual(
+    values = Liz_cols,
+    name = "Liz"
+  )
+
+
+
+p
+
+ggsave(
+  "AVT_tree_all.pdf_withlegends_LIZ.pdf",
+  plot = p,
+  width = 8,
+  height = 15,
+  units = "in"
+)
+
+#no legends
+p <- p + theme(legend.position = "none")
+p
+ggsave(
+  "AVT_tree_all_Liz.pdf",
+  plot = p,
+  width = 10,
+  height = 20,
+  units = "in"
+)
+
+```
+
+
+

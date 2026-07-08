@@ -1,0 +1,239 @@
+---
+title: "MucoidEPS_Genome_Manuscript"
+author: "Maria Alejandra Gil Polo"
+date: "2026-07-01"
+output: html_document
+---
+
+
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+library(RColorBrewer)
+library(gplots)
+library(ggtree)
+library(vegan)
+library(corrplot)
+library(patchwork)
+library(ggnewscale)
+library(ape)
+library(readxl)
+library(ggtreeExtra)
+library(colorRamps)
+library(colorspace)
+library(here)
+library(colorspace) 
+
+```
+
+I am still importing this information from Sohini's github but as soon as she has decided the information is correct, I can think about moving this to my repository or use the link to hers 
+
+
+```{r data import,echo=Generating the ML tree}
+
+## THESE FILES WERE MADE BY SOHINI 
+
+tree<-read.tree(here("Data_input", "Genome", "AVT_single_copy_core_concat_outgroup.fasta.treefile")) ### I am using a file that I saw Sohini updated like 11 hours ago, is this the right one? I don' tknow, it says unrooted so I can not run teh statistical test. 
+tree
+
+## Extract the strains in the tree which represents what Sohini used. 
+tip_strains <- data.frame(Strain = tree$tip.label)
+tip_strains <- tip_strains %>% dplyr::rename(Strain_Code = Strain)
+tip_strains
+## Add the informaiton I am interested in particularly Morphology 
+
+Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype.xlsx"))
+Strains ## I will use Morphology and Pairs
+
+meta_tree <- left_join(tip_strains, Strains, by = "Strain_Code") #Making sure none of the tip samples were lost after left_joining with the "Strains" metadata
+
+meta_tree
+
+```
+
+### Create the files for itols 
+
+
+```{r}
+
+dir.create(here("Tables", "itol_annotations"), showWarnings = FALSE, recursive = TRUE)
+
+# FILE 1: labels.txt  
+
+## The labels are in the format 001, 002, 003... 
+
+labels <- data.frame(
+  tip = meta_tree$Strain_Code,
+  new_label = meta_tree$Strain
+)
+labels <- labels[!is.na(labels$tip) & !is.na(labels$new_label), ]
+labels
+
+
+cat("LABELS\nSEPARATOR TAB\n\nDATA\n",
+    file = here("Tables", "itol_annotations", "labels.txt"))
+
+write.table(labels, here("Tables", "itol_annotations", "labels.txt"),
+            sep = "\t", append = TRUE, row.names = FALSE,
+            col.names = FALSE, quote = FALSE)
+
+
+## Morphology
+
+# FILE 2: morphology_colorstrip.txt
+
+# Edit these two colors to change Morphology appearance
+morph_colors <- c("Mucoid" = "#4eadb9", "Dry" = "#e0ba3e")
+  
+morphology <- data.frame(
+    tip   = meta_tree$Strain,
+    color = morph_colors[as.character(meta_tree$Morphology)],
+    label = meta_tree$Morphology
+  )
+
+morphology <- morphology[!is.na(morphology$color), ]
+morphology
+
+cat(
+    "DATASET_COLORSTRIP\n",
+    "SEPARATOR TAB\n",
+    "DATASET_LABEL\tMorphology\n",
+    "COLOR\t#000000\n",
+    "STRIP_WIDTH\t25\n",
+    "LEGEND_TITLE\tMorphology\n",
+    "LEGEND_SHAPES\t1\t1\n",
+    "LEGEND_COLORS\t", morph_colors["Mucoid"], "\t", morph_colors["Dry"], "\n",
+    "LEGEND_LABELS\tMucoid\tDry\n",
+    "\nDATA\n",
+    sep = "",
+    file = here("Tables", "itol_annotations", "morphology_colorstrip.txt")
+  )
+write.table(morphology, here("Tables", "itol_annotations", "morphology_colorstrip.txt"),
+              sep = "\t", append = TRUE, row.names = FALSE,
+              col.names = FALSE, quote = FALSE)
+
+
+# FILE 3: pairs_colorstrip.txt   (colored boxes + pair numbers)
+
+# One color per pair; use rainbow() so many pairs stay distinguishable
+pair_ids    <- sort(unique(na.omit(as.character(meta_tree$Pairs))))
+pair_colors <- setNames(rainbow(length(pair_ids)), pair_ids)
+
+pairs <- data.frame(
+  tip   = meta_tree$Strain,
+  color = pair_colors[as.character(meta_tree$Pairs)],
+  label = meta_tree$Pairs
+)
+pairs <- pairs[!is.na(pairs$color), ]
+
+cat(
+  "DATASET_COLORSTRIP\n",
+  "SEPARATOR TAB\n",
+  "DATASET_LABEL\tPairs\n",
+  "COLOR\t#000000\n",
+  "STRIP_WIDTH\t40\n",
+  "SHOW_STRIP_LABELS\t1\n",
+  "STRIP_LABEL_SIZE_FACTOR\t0.9\n",
+  "STRIP_LABEL_OUTLINE\t0.5\n",
+  "\nDATA\n",
+  sep = "",
+  file = here("Tables", "itol_annotations", "pairs_colorstrip.txt")
+)
+write.table(pairs, here("Tables", "itol_annotations", "pairs_colorstrip.txt"),
+            sep = "\t", append = TRUE, row.names = FALSE,
+            col.names = FALSE, quote = FALSE)
+
+
+# ============================================================
+# FILE 4: glucose_gradient.txt
+# ============================================================
+# Grab 117 colors from your chosen palette, take indices 1, 59, 117
+# as low / mid / high. Swap in magenta2green(117) if you prefer.
+#glucose_pal <- diverge_hcl(117, h = c(246, 40), c = 96)
+# glucose_pal <- colorRamps::magenta2green(117)
+
+#glucose_low  <- glucose_pal[1]
+#glucose_mid  <- glucose_pal[59]      # middle of 117
+#glucose_high <- glucose_pal[117]
+
+#cat("Glucose palette (low / mid / high):",
+#    glucose_low, "/", glucose_mid, "/", glucose_high, "\n")
+
+#gluc_df <- data.frame(
+#  tip   = meta_tree$Strain,
+#  value = meta_tree$Glucose_OD600_ave
+#)
+#gluc_df <- gluc_df[!is.na(gluc_df$value), ]
+
+#cat(
+#  "DATASET_GRADIENT\n",
+#  "SEPARATOR TAB\n",
+#  "DATASET_LABEL\tGlucose OD600 (avg)\n",
+#  "COLOR\t#000000\n",
+#  "STRIP_WIDTH\t25\n",
+#  "COLOR_MIN\t", glucose_low,  "\n",
+#  "COLOR_MAX\t", glucose_high, "\n",
+#  "USE_MID_COLOR\t1\n",
+#  "COLOR_MID\t", glucose_mid,  "\n",
+#  "LEGEND_TITLE\tGlucose OD600 (avg)\n",
+#  "\nDATA\n",
+#  sep = "",
+#  file = "itol_annotations/glucose_gradient.txt"
+#)
+#write.table(gluc_df, "itol_annotations/glucose_gradient.txt",
+#            sep = "\t", append = TRUE, row.names = FALSE,
+#            col.names = FALSE, quote = FALSE)
+
+
+cat("\nAll 4 files written to:", normalizePath("itol_annotations"), "\n")
+
+
+
+```
+## SNP differences between pairs
+
+```{r}
+
+raw_lines <- read_lines("https://raw.githubusercontent.com/sohini5981/AVT_SS/refs/heads/main/Data/strain_118_variants_pairwise_mismatches.tsv?token=GHSAT0AAAAAAEB5NZNJGLKKLM2RIHBBHF4W2SNWXSQ")
+
+# Keep only the actual data rows (they start with "DCv2", not "#DCv2" or "INFO")
+data_lines <- raw_lines[startsWith(raw_lines, "DCv2")]
+
+gtcheck_data <- read_tsv(
+  I(data_lines),   # I() tells read_tsv to treat this as literal text, not a filepath
+  col_names = c("Tag", "Query_Sample", "Genotyped_Sample", "Discordance",
+                "Avg_neg_log_P_HWE", "Sites_compared", "Matching_genotypes")
+)
+View(gtcheck_data)
+gtcheck_data <- gtcheck_data %>% dplyr::select(-Tag)
+
+View(gtcheck_data)
+
+
+```
+
+Assessing the phylogenetic signal
+
+```{r}
+install.packages("caper")
+library(caper)
+
+## Convert dry and mucoid in 0/1
+
+meta_tree <- meta_tree %>%
+  mutate(Dry_binary = if_else(Morphology == "Dry", 1, 0))
+
+comp_data <- comparative.data(phy = tree,
+                                data = meta_tree,
+                                names.col = "Strain_Code",
+                                vcv = TRUE)
+
+d_result <- phylo.d(comp_data, binvar = Dry_binary)  # Dry_binary should be 0/1
+print(d_result)
+plot(d_result)
+
+
+```
