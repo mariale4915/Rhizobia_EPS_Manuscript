@@ -1398,7 +1398,12 @@ write_xlsx(anova_hostbiomass, here("Tables", "EPS_anova_hostbiomass_FromR.xlsx")
 ### Rhizobia relative fitness 
 ```{r}
 
-Freq_data <-  read.table(here("Data_input", "freq_100_AVT118.tsv"), header = TRUE, sep = "") #This is the frequency data
+#Freq_data <-  read.table(here("Data_input", "freq_100_AVT118.tsv"), header = TRUE, sep = "") #This is the frequency data
+
+#Use what seems to be Sohini's updated data
+
+Freq_data <-  read.table("https://raw.githubusercontent.com/sohini5981/AVT_SS/refs/heads/main/Data/freq_100_AVT118.tsv?token=GHSAT0AAAAAAEB5NZNJP2UTD2FUBAM6DZVM2SUL6YQ", header = TRUE, sep = "")
+
 #View(StrainFitness_data)
 
 Freq_data <- Freq_data %>% 
