@@ -217,7 +217,7 @@ write_xlsx(Anthrone_mean, here("Tables", "Anthrone_mean.xlsx"))
 
 ## Open the file that has the description of the strains and subset the strains that are within a Pair 
 
-Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype.xlsx"))
+Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx"))
 
 
 Strain_used_pair <- Strains %>% filter(!is.na(Pairs)) %>% select(-"Morphology") ## Subset the strains that have a pair for this analysis and filter out Morphology column so it doesn't get duplicated when we do the "Anthrone_complete"
@@ -229,7 +229,7 @@ Pair_Anthrone_complete <- left_join(Strain_used_pair, Anthrone_complete, by = "S
 Pair_Anthrone_complete
 
 Pair_Anthrone_complete$Pairs <- factor(Pair_Anthrone_complete$Pairs) #Make sure the Pairs are read as characters
-
+View(Pair_Anthrone_complete)
 
 Pairs_anthrone <- ggplot(Pair_Anthrone_complete, aes(x = Pairs, y = Glucose_OD600, color = Morphology)) +
   geom_jitter() +
@@ -255,13 +255,15 @@ Pairs_anthrone <- ggplot(Pair_Anthrone_complete, aes(x = Pairs, y = Glucose_OD60
 
 Pairs_anthrone
 
-ggsave(Pairs_anthrone, file = here("Figures", "EPS_FigureS3_FromR.pdf"), width = 10, height = 10, units = "in")
+ggsave(Pairs_anthrone, file = here("Figures", "EPS_FigureS2A_FromR.pdf"), width = 10, height = 10, units = "in")
 
 #### Anthrone per pair - Stats ####
 
+library(lmerTest)
 
-model1_raw <- lmer(Glucose_OD600 ~ Morphology + (1|Pairs), data = Pair_Anthrone_complete) ## This analysis is done in the file that works with only the Pairs
-model1_raw
+
+model1_raw <- lmerTest::lmer(Glucose_OD600 ~ Morphology + (1|Pairs), data = Pair_Anthrone_complete)
+summary(model1_raw)
 anova1 <- anova(model1_raw)
 anova1
 anova1 <- rownames_to_column(as.data.frame(anova1), var = "Term")
@@ -271,7 +273,7 @@ colnames(anova1)
 anova_TableS3 <- anova1 %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, - NumDF, - DenDF)
+  dplyr::select(-`Mean Sq`)
 anova_TableS3
 
 write_xlsx(anova_TableS3, here("Tables", "EPS_TableS4_FromR.xlsx"))
@@ -305,7 +307,7 @@ Histo_balls <- ggplot(Anthrone_mean, aes(x = Glucose_OD600_ave)) +
 Histo_balls
 
 
-ggsave(Histo_balls, file = here("Figures", "EPS_FigureS4_FromR.pdf"), width = 10, height = 8, units = "in")
+ggsave(Histo_balls, file = here("Figures", "EPS_FigureS2B_FromR.pdf"), width = 10, height = 10, units = "in")
 
 #### Anthrone - whole collection - stats ####
 
@@ -1402,7 +1404,7 @@ write_xlsx(anova_hostbiomass, here("Tables", "EPS_anova_hostbiomass_FromR.xlsx")
 
 #Use what seems to be Sohini's updated data
 
-Freq_data <-  read.table("https://raw.githubusercontent.com/sohini5981/AVT_SS/refs/heads/main/Data/freq_100_AVT118.tsv?token=GHSAT0AAAAAAEB5NZNJP2UTD2FUBAM6DZVM2SUL6YQ", header = TRUE, sep = "")
+Freq_data <-  read.table("https://raw.githubusercontent.com/sohini5981/AVT_SS/refs/heads/main/Data/freq_100_AVT118.tsv?token=GHSAT0AAAAAAEB5NZNIRSIEOXQXTQKNXCUQ2S3Y5KQ", header = TRUE, sep = "")
 
 #View(StrainFitness_data)
 
@@ -1466,6 +1468,8 @@ meso_fit_ave <- StrainFitness_Plant %>%
   summarise(Fitness_ave = mean(Fitness))
 #View(meso_fit_ave)
 
+#View(meso_fit_ave)
+
 meso_fit_ggplot <- ggplot(data = meso_fit_ave, aes(x= Morphology, y = Fitness_ave, fill = Morphology)) +
 stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
   geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
@@ -1514,6 +1518,23 @@ anova_RhizobialFitness <- anova_RhizobialFitness %>%
 
 anova_RhizobialFitness
 write_xlsx(anova_RhizobialFitness, here("Tables", "EPS_anova_RhizobialFitness_FromR.xlsx"))
+
+## Trying out this analysis: 
+
+### Based on Sohini's analysis two varieties are able to select for better partners, except Vernal 
+View(Fitness_ave)
+
+aov_RhizobialFitness_S <- aov(Fitness_ave ~ Morphology, meso_fit_ave %>% filter(Variety == "S"))
+summary(aov_RhizobialFitness_S)
+anova(aov_RhizobialFitness_S) # P value is still 0.1192
+
+aov_RhizobialFitness_O <- aov(Fitness_ave ~ Morphology, meso_fit_ave %>% filter(Variety == "O"))
+summary(aov_RhizobialFitness_O)
+anova(aov_RhizobialFitness_O) # P value is still 0.0972
+
+aov_RhizobialFitness_V <- aov(Fitness_ave ~ Morphology, meso_fit_ave %>% filter(Variety == "V"))
+summary(aov_RhizobialFitness_V)
+anova(aov_RhizobialFitness_V) # P value is still 0.4295
 
 ```
 
@@ -1642,125 +1663,6 @@ write_xlsx(anova_OtherPlantTraits, here("Tables", "EPS_anova_OtherPlantTraits_Fr
 
 
 
-
-
-### Assessing correlations between proportion of branched nodules and host bionass
-
-
-color_values#Host_data_ave
-
-#Host_Branching_benefit <- ggplot(data = Host_data_ave, aes(x= ave_prop_branched, y = ave_shoot, color = Morphology)) +
-#  geom_jitter(outlier.shape = NA, position = position_dodge(width = 0.8)) +
-#  scale_color_manual(values = color_values) +
-#  facet_wrap(~Variety) +
-#  theme_classic() +
-#  labs(
-#    x= "Proportion of Branched nodule",
-#    y = "Shoot biomass"
-#  ) +
-#  theme(
-#   text             = element_text(family = "Helvetica", color = "black"),
-#    axis.text        = element_text(size = 10, color = "black"),
-#    axis.title.x     = element_text(size = 12, color = "black"),
-#    axis.title.y     = element_text(size = 12, color = "black"),
-#    panel.grid       = element_blank(),
-#    axis.line        = element_line(color = "black"),
-#    axis.ticks       = element_line(color = "black"),
-#    legend.position  = "none")
-
-#Host_Branching_benefit
-
-
-### Density of reproducible bacteria per nodule (CFU/area)
-
-## This requires a different document
-
-# We crushed individual nodules and performed dilution series and plated them in culture media to estimate 
-
-Single_nodule_CFU <-  read.csv(here("Data_input", "Host_Single_Nodule_CFU.csv"))
-#View(Single_nodule_CFU)
-
-Single_nodule_CFU <- Single_nodule_CFU %>%
-  separate_wider_delim(
-    cols = Sample_ID,
-    delim = ".",
-    names = c("Strain", "Variety", "Plant_Rep"),
-    too_few = "align_start"
-  )
-
-Single_nodule_CFU
-Single_nodule_CFU <- Single_nodule_CFU %>%
-  mutate(spot.1 = as.numeric(spot.1),
-         spot.2 = as.numeric(spot.2),
-         spot.3 = as.numeric(spot.3),
-         spot.4 = as.numeric(spot.4),
-         spot.5 = as.numeric(spot.5)
-         )
-
-Single_nodule_CFU <- Single_nodule_CFU %>% filter(Variety %in% c("O", "V", "S"))
-
-Single_nodule_CFU <- Single_nodule_CFU %>%
-  mutate(spot_ave = rowMeans(across(c(spot.1, spot.2, spot.3, spot.4, spot.5)), na.rm = TRUE))
-Single_nodule_CFU
-### I will calculate the total CFU 
-
-Single_nodule_CFU <- Single_nodule_CFU %>%
-  mutate(Total_CFU = spot_ave*(10^(dilution.counted - 1))*1000/20)
-#View(Single_nodule_CFU)
-
-Single_nodule_CFU <- Single_nodule_CFU %>%
-  mutate(Density = Total_CFU/`Nodule.area`)
-
-Single_nodule_CFU
-
-Single_nodule_CFU_clean <- Single_nodule_CFU %>%
-  filter(is.finite(Density), Density > 0)## There are some Nan in density because some nodules did not have countable colonies or contamination, and it could also be NA because we did not take the nodule area for some nodules. There are also some 0 because all the CFU we counted were 0, I also need to get rid of that.
-
-
-Density <- ggplot(data = Single_nodule_CFU, aes(x= Morphology, y = log10(Density), fill = Morphology)) +
-stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
-  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
-  stat_summary(fun = median, fun.min = median, fun.max = median,
-               geom = "crossbar", width = 0.6,
-               color = "black", linewidth = 0.4,
-               position = position_dodge(width = 0.8)) +
-    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
-        scale_fill_manual(values = color_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Morphology",
-    y = "Log10(CFU/area per nodule)"
-  ) +
-  theme(
-    text             = element_text(family = "Helvetica", color = "black"),
-    axis.text        = element_text(size = 10, color = "black"),
-    axis.title.x     = element_text(size = 12, color = "black"),
-    axis.title.y     = element_text(size = 12, color = "black"),
-    panel.grid       = element_blank(),
-    axis.line        = element_line(color = "black"),
-    axis.ticks       = element_line(color = "black"),
-    legend.position  = "none")
-
-Density
-
-#View(Single_nodule_CFU)
-
-ggsave(Density, 
-       filename = here("Figures" ,"EPS_Density_FromR.pdf"),
-       device = "pdf",
-       height = 3, width = 4, units = "in")
-
-### Before running the code: 
-#View(Single_nodule_CFU)
-
-colnames(Single_nodule_CFU_clean)
-#View(Single_nodule_CFU_clean)
-model_intercept <- lmer(log10(Density) ~ Morphology*Variety + (1 | Strain) + (1 | Strain:Plant_Rep),  data = Single_nodule_CFU_clean)
-model_intercept
-anova(model_intercept, type = 3)
-
-
 ```
 
 ### Dual inoculation experiments ###
@@ -1781,7 +1683,7 @@ Harvesting_results_RPM <- Harvesting_results_RPM %>%
 #View(Harvesting_results_M)
 
 Harvesting_results_Dual <- Harvesting_results_RPM %>% filter(Morphology == "Dual")
-  
+View(Harvesting_results_Dual)  
                      
 Dual_Competition <- ggplot(Harvesting_results_Dual %>% 
                                          mutate(Pair = factor(Pair, levels = c("1", "2", "3", "4"))),  
@@ -1809,6 +1711,11 @@ ggsave(Dual_Competition,
        filename = here("Figures" ,"EPS_DualCompetition_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
+
+## Statistical tests: 
+
+#lm(Percentage_Dry ~ as.factor(Pair)) 
+
 
 ```
 
