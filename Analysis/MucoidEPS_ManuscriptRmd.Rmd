@@ -9,12 +9,7 @@ output: html_document
 
 
 ```{r}
-#install.packages("ggbeeswarm")
-#install.packages("glmmTMB")
-#install.packages("Matrix")
-#install.packages("lmerTest")
-#install.packages("scales")
-#install.packages("broom")
+
 library(lmerTest)
 library(readxl)
 library(ggbeeswarm)
@@ -42,7 +37,7 @@ library(dplyr)
 library(writexl)
 library(vcfR)
 library(adegenet)
-
+library(car)
 
 ```
 
@@ -68,7 +63,6 @@ I will open Sohini's recent vcf file created with the alignment to reference gen
 
 ```{r}
 
-
 vcf <- read.vcfR(here("Data_input", "Genome", "strain_118_variants.vcf"))
 
 gt_reference <- extract.gt(vcf, element = "GT") ## 0 and 1
@@ -83,15 +77,15 @@ gt_numeric
 ## PCA needs one row per strain (observation), one column per SNP (variable). The current matrix is the other way around, so I will transpose it. 
 
 gt_matrix <- t(gt_numeric)
+
 head(gt_matrix)
 
 dim(gt_matrix) ## It shows 117 and 1356566. # 
-
 sum(is.na(gt_matrix)) #there are 762479 missing values ## handle the NAs because prcomp() can not handle NAs
 
 
 complete_snps <- colSums(is.na(gt_matrix)) == 0 ## Returns TRUE for columns that have zero missing values, this is a way to filter and keep only the complete columns
-
+complete_snps
 gt_matrix <- gt_matrix[,complete_snps] ## Here I am retaining only the columns that do not have any missing data. 
 dim(gt_matrix) # 117 and 96206
 
@@ -109,10 +103,16 @@ var_explained <- (pca_result$sdev^2 / sum(pca_result$sdev^2)) * 100 #pca_results
 var_explained
 #View(var_explained)
 
-barplot(var_explained[1:10],
+screeplot <- barplot(var_explained[1:10],
         names.arg = paste0("PC", 1:10),
         ylab = "% variance explained",
         main = "Scree plot")
+
+
+screeplot
+
+ggsave(screeplot, here("Figures", "screeplot.pdf"), width = 4, height = 2.5, units = "in")
+
 
 
 ## I will use the pc_scores
@@ -152,8 +152,6 @@ ggsave(plot = PCA, here("Figures", "PCA.pdf"),
             width = 6, height = 2.5, units = "in")
 
 ```
-
-
 
 ### Co-occurrence ### 
 
@@ -367,26 +365,88 @@ ggsave(Pairs_anthrone, file = here("Figures", "EPS_FigureS2A_FromR.pdf"), width 
 
 
 model1_raw <- lmerTest::lmer(Glucose_OD600 ~ Morphology + (1|Pairs), data = Pair_Anthrone_complete)
+
+# Fixed effects: estimate, SE, df, t, p 
 summary(model1_raw)
-anova1 <- anova(model1_raw)
-anova1
-anova1 <- rownames_to_column(as.data.frame(anova1), var = "Term")
-anova1
-colnames(anova1)
 
-anova_TableS3 <- anova1 %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`)
-anova_TableS3
+#Cleaner extraction
+fixed_effects <- as.data.frame(summary(model1_raw)$coefficients)
+fixed_effects
 
-write_xlsx(anova_TableS3, here("Tables", "EPS_TableS4_FromR.xlsx"))
+# Random effect: variance, SD and how much it matters
+VarCorr(model1_raw)
+as.data.frame(VarCorr(model1_raw)) #Arranging the table as a datframe
+
+# ICC: Proportion of total variance explained by pairs. This explains how important is the random effect
+#install.packages("performance")
+library(performance)
+icc(model1_raw)
+
+# LRT: Whether the random effect is statistically justified
+ranova(model1_raw)
+
+## Model degrees of freedome
+cat("N observations:", nobs(model1_raw), "\n")
+cat("N pairs (grouping levels):", ngrps(model1_raw), "\n")
+
+#fixed_effects
+fixed_effects_lm
+fixed_effects_lm <- rownames_to_column(as.data.frame(fixed_effects), var = "Term")
+fixed_effects_lm
+
+### To create the table to export 
+
+### Fixed effect table
+fixed_effects <- as.data.frame(summary(model1_raw)$coefficients) %>%
+  rownames_to_column(var = "Term") %>%
+  rename(t_value = `t value`, p_value = `Pr(>|t|)`) %>%
+  mutate(
+    across(c(Estimate, `Std. Error`, df, t_value), ~ sprintf("%.3f", .)),
+    p_value = ifelse(as.numeric(p_value) < 0.001, "< 0.001", sprintf("%.3f", as.numeric(p_value)))
+  )
+
+### Randome effect table
+
+var_corr <- as.data.frame(VarCorr(model1_raw))
+# var_corr has columns: grp, var1, vcov, sdcor -- pull out the Pairs row
+pairs_variance <- var_corr$vcov[var_corr$grp == "Pairs"]
+pairs_sd <- var_corr$sdcor[var_corr$grp == "Pairs"]
+residual_variance <- var_corr$vcov[var_corr$grp == "Residual"]
+
+# LRT for the random effect 
+lrt_result <- ranova(model1_raw)
+# ranova() returns a row for the tested random effect (not the <none> row)
+lrt_row <- lrt_result[rownames(lrt_result) != "<none>", ]
+
+
+#
+icc_value <- icc(model1_raw)
+
+### Combined the supplementary tables 
+
+random_effects_rows <- data.frame(
+  Term = c("Random effect: Pairs (variance)",
+           "Random effect: Pairs (LRT vs. no random effect)"),
+  Estimate = c(sprintf("%.3f", pairs_variance), "-"),
+  `Std. Error` = c("-", "-"),
+  df = c("-", sprintf("%.0f", lrt_row$Df)),
+  t_value = c("-", sprintf("%.3f (\u03c7\u00b2)", lrt_row$LRT)),
+  p_value = c("-", ifelse(lrt_row$`Pr(>Chisq)` < 0.001, "< 0.001",
+                           sprintf("%.3f", lrt_row$`Pr(>Chisq)`))),
+  check.names = FALSE
+)
+ 
+full_table <- bind_rows(fixed_effects, random_effects_rows)
+full_table
+ 
+write_xlsx(full_table, here("Tables", "EPS_TableS4_FromR.xlsx"))
+
+
 
 ```
 
 
 #### Assess morphotype and normalized glucose ####
-
 
 We will first determine the effect of morphotype and phylogenetic relatedness amount of EPS produced by each morphotype (mucoid and dry) in the whole collection, and whether morphotype or phylogenetic relatedness affects this trait
 
@@ -457,20 +517,22 @@ Strain_morphotype <- Strain_morphotype %>%
 model <- glm(Morphology_binary ~ PC1 + PC2, data = Strain_morphotype, family = "binomial")
 summary(model)
 
+#exp(coef(model))       # odds ratios — much more interpretable than log-odds
+#exp(confint(model))    # 95% CI on the odds ratios
 
-#anova <- anova(model)
-#anova
-#anova <- rownames_to_column(as.data.frame(anova), var = "Term")
-#anova
-#This model is asking whether the strain's position among the major axes of genome-wide relatedness is predicting whether is Mucoid and Dry
+
+anova <- Anova(model, type = "II", test.statistic = "LR")
+anova
+anova <- rownames_to_column(as.data.frame(anova), var = "Term")
+anova
+1 - (model$deviance / model$null.deviance)   # McFadden's pseudo-R2 is 0.03306622
 
 anova <- anova %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`)
-anova_TableS3
+  mutate(`Pr(>Chisq)` = ifelse(as.numeric(`Pr(>Chisq)`) < 0.001, "< 0.001", `Pr(>Chisq)`))
 
-write_xlsx(anova_TableS3, here("Tables", "EPS_TableMucoidDry_Phylogeny_FromR.xlsx"))
+write_xlsx(anova, here("Tables", "PopStru_Binomial_FromR.xlsx"))
+
 
 ### Normalized Glucose ###
 
@@ -490,13 +552,13 @@ anova <- rownames_to_column(as.data.frame(anova), var = "Term")
 anova
 #This model is asking whether the strain's position among the major axes of genome-wide relatedness is predicting whether is Mucoid and Dry
 
-anova_TableS3 <- anova %>%
+anova <- anova %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
   dplyr::select(-`Mean Sq`)
-anova_TableS3
+anova
 
-write_xlsx(anova_TableS3, here("Tables", "EPS_TableEPS_Phylogeny_FromR.xlsx"))
+write_xlsx(anova, here("Tables", "EPS_TableEPS_Phylogeny_FromR.xlsx"))
 
 
 
@@ -829,6 +891,9 @@ ggsave(Growth_DryPercentage,
        device = "pdf", 
        height = 4, width = 5, units = "in")
 
+soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture" & Timepoint != "0")
+
+hist((soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture" & Timepoint != "0"))$Percentage_Dry_ave) #Normally distributed.
 
 ### Statistics
 
@@ -1019,7 +1084,6 @@ ggsave(Survival_Mixture,
        filename = here("Figures" ,"EPS_Figure3B_FromR.pdf"),
        device = "pdf",
        height = 4, width = 5, units = "in")
-
 
 
 
@@ -1222,7 +1286,7 @@ Initial_ave_growth <- Survival_Mesocosm_Mixture_initial_ave %>%
 
 Initial_ave_growth
 
-###Maria here you need to organize in order the data for the times. It is not in order
+###Not for myself: Maria here you need to organize in order the data for the times. It is not in order
 
 Survival_DryPercentage <- ggplot(data = soil.expanded_ave %>% 
                                    filter(Condition == "Survival" & Population_Morphology == "Mixture" & Timepoint != "0") %>% 
@@ -1254,6 +1318,9 @@ ggsave(Survival_DryPercentage,
        filename = here("Figures","EPS_Figure3D_FromR.pdf"), 
        device = "pdf", 
        height = 4, width = 5, units = "in")
+
+## This looks normaly distributed
+hist((soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture" & Timepoint != "0"))$Percentage_Dry_ave)
 
 
 ```
@@ -1320,6 +1387,7 @@ Shift_Mucoid_Dry_Soil_Survival <- ggplot(Survival_Mesocosm_Mucoid_NoIn %>%
   geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
   scale_shape_manual(values = myshapes_survival) +
   scale_fill_manual(values = mycols) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
   labs(x = "Treatment", y = "Percentage of dry bacteria") +
   theme_classic() +
   theme(
@@ -1356,6 +1424,7 @@ Shift_Mucoid_Dry_Soil_Growth <- ggplot(Growth_Mesocosm_Mucoid_NoIn %>%
   geom_jitter(aes(shape = Timepoint), position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
   scale_shape_manual(values = myshapes_growth) +
   scale_fill_manual(values = mycols) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
   labs(x = "Treatment", y = "Percentage of dry bacteria") +
   theme_classic() +
   theme(
@@ -1488,7 +1557,7 @@ Host_data <- Host_data %>%
   mutate(Nod_number = as.numeric(Nodule_LOBED) + as.numeric(Nodule_UN_Lobed),
          Prop_branched = as.numeric(Nodule_LOBED)/Nod_number)
 
-
+hist(Host_data$Prop_branched)
 
 
 ####### RHIZOBIA RELATIVE FREQUENCY ######
@@ -1734,6 +1803,27 @@ anova_RhizobialFitness
 write_xlsx(anova_RhizobialFitness, here("Tables", "EPS_anova_RhizobialFitness_FromR.xlsx"))
 
 
+### Subset ###
+
+aov_Rfit_O <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "O"))
+summary(aov_Rfit_O)
+anova_Rfit_O <- anova(aov_Rfit_O)
+anova_Rfit_O
+
+
+aov_Rfit_S <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "S"))
+summary(aov_Rfit_S)
+
+anova_Rfit_S <- anova(aov_Rfit_S)
+anova_Rfit_S  
+ 
+aov_Rfit_V <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "V"))
+summary(aov_Rfit_V)
+   
+anova_Rfit_V <- anova(aov_Rfit_V)
+anova_Rfit_V
+
+
 
 ## Trying out this analysis: 
 
@@ -1973,6 +2063,7 @@ Shift_InPlant <- ggplot(Harvesting_results_Mucoid %>%
               position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8),
               size = 2) +
   scale_color_manual(values = c("normal" = "black", "red_dot" = "red")) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
   labs(x = "Pairs", y = "Percentage of dry bacteria") +
   theme_classic() +
   theme(
