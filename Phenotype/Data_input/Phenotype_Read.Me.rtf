@@ -1,0 +1,91 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fswiss\fcharset0 Helvetica-Bold;\f2\fswiss\fcharset0 Helvetica-Oblique;
+}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww28740\viewh18340\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 This Read.Me file has been written to describe the data_input used for this analysis \
+\
+\
+\
+\
+
+\f1\b Phenotype
+\f0\b0 : \
+\
+
+\f1\b SingleNodule_Ocurrence_data.csv\
+
+\f0\b0 \
+I ran an experiment using 4 pairs of strains (4 dry and 4 mucoid). Each pair consisted of a mucoid and a dry strain, co-isolated in the GALT prospector.  The pairs used were 091 - 101, 015 - 099, 016 - 100, and 029 - 098, where the mucoid strains were 0.15, 029, 016, 091, and the dry ones were 098, 099, 100, 101.  I co-inoculated them in the alfalfa variety Oneida (each co-inoculant being one pair). I had 7 reps per pair.  During harvesting, we picked all the nodules from each plant and randomly selected 10 nodules per plant, then sterilized, crushed, and streaked them onto Yeast Mannitol Agar (YEMA) plates. Then I observed whether the nodule's morphology was Mucoid, Dry, or a Mixture of both. Some nodules showed no microbial growth, and others showed microbes that appeared to be contaminants. We initially started with 70 nodules per co-inoculated pair, we crushed around 280 nodules. \
+\
+Name: Has the name of the pairs. It is formatted as Mucoid_Dry \
+Plant: The number assigned to the plant. There were 7 plants per co-inoculated pair.\
+Growth_chamber: We used 5 growth chambers. We used a randomized block design\
+Nodule: Has the number of the nodule. There should be around 10 nodules per Plant.\
+Lobed: Number of branches each nodule had.\
+Morphology: Whether it displayed a Mucoid, Dry, or both (Mixture) morphology. NA if nothing grew in the plate, and Contamination if colonies with other colors grew (yellow, red)\
+\
+
+\f1\b AnthroneOD620.xlsx\
+
+\f0\b0 \
+This file contains the information in the OD620 measurement. We grew 116 strains in Rhizobium-defined medium (RDM) for 8 days. We had 3 reps of each strain. To harvest the samples, we took 1 mL from each culture and centrifuged them separately. We then took the supernatant and diluted it with Milli-Q water at a 1:50 (v/v) ratio. We then run the anthrone assay with this dilution. Aside from the 116 strains, we also measured the OD620 of known glucose concentrations, by creating a set of samples that we used to calibrate the experiment. These ranged from 20 ug to 0.156 ug.\
+\
+\
+
+\f1\b AnthroneOD600.xlsx\
+
+\f0\b0 \
+To estimate the biomass of each strain, after centrifuging the samples and discarding the supernatant, we resuspended them and diluted them in saline solution to bring the OD600 of all samples to a range between 0.05 and 0.4. \
+\
+\
+\
+
+\f1\b Strains_Description_Phenotype_Github.xlsx\
+
+\f0\b0 \
+This file contains the following columns:\
+Strain_Code: This is the labeling system used in Guha et a., 2026 for the AVT collection\
+Strain: This is the labeling system used in the present manuscript and in Paillan et al., 2025 for the AVT collection. \
+Morphology: This is the morphotype that was assigned based on visual inspection. The strains can be either mucoid or dry \
+Pairs: There are 19 pairs of strains in the collection that were co-isolated together from each well of the 96-well plates sent from the GALT prospector. Each number represents a pair \
+\
+
+\f1\b Single_Strain_Experiment_Host.csv\
+\
+
+\f0\b0 This file contains the results of the single-inoculation experiments conducted with the 117 strains and the three alfalfa varieties. Briefly, 3 alfalfa varieties (S,O,V) were inoculated with 117 strains from the AVT strain collection that belong to the 
+\f2\i Sinorhizobium meliloti
+\f0\i0  species. We had 4 reps per alfalfa variety per isolate. The plants were grown in the greenhouse for 2 months without nitrogen fertilization. After harvesting, we collected several measurements that are listed in this file. This file also contains information on the multistrain inoculations in the \'93Strain\'94 column labeled \'93MIX\'94. \
+\
+\
+Strain: Name of the strain used in the experiment\
+Label: Name of the label that has the format Strain_AlfalfaVariety_Rep\
+Nodule_LOBED: Number of nodules that branched\
+Morphology: Whether the strain is dry or mucoid\
+Variety: The alfalfa variety we worked with, where S stands for SW4107, O stands for Oneida, and V stands for Vernal \
+Rootweight_g: Weight in g of the root (with nodules)\
+Nodule_UN_Lobed: Number of the nodules that did not branch.\
+Rep: Rep of each experiment, we had 4 reps x 3 alfalfa varieties x 117 isolates\
+Slot: Slot used in the greenhouse\
+Shootweight_g: Weight in grams of the shoot\
+\
+\
+
+\f1\b freq_100_AVT118.tsv\
+
+\f0\b0 \
+This file contains the information on the frequencies of each individual strain. We calculated this by collecting all nodules per plant inoculated with the multi-strain population of S. meliloti and sending each nodule pool for whole-genome sequencing. Then we aligned the reads to AVT118 and calculated the strain frequencies using Haplotype analysis of reads in pools (HARP). More details are in Guha et al., 2026. In this file, the first column is the samples, labeled as AG_MIX_AlfalfaVariety_Rep. The other columns are each strain in the population. AG_MIX_1, AG_MIX_2, AG_MIX_3, and AG_MIX_4 are the initial frequencies. \
+\
+\
+For the Anthrone assay file: \
+\
+
+\f1\b AnthroneOD620.xlsx\
+
+\f0\b0 \
+For the Anthrone assay experiment, I grew 116 strains of Sinorhizobium meliloti in RDM liquid media for 8 days. Then I centrifuged the samples, recovered teh supernatant to run the anthrone assay, and resuspended the pellet in saline solution to measure the OD600 so I could normalize data to the OD600. \
+}

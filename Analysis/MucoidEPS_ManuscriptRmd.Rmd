@@ -89,31 +89,51 @@ complete_snps
 gt_matrix <- gt_matrix[,complete_snps] ## Here I am retaining only the columns that do not have any missing data. 
 dim(gt_matrix) # 117 and 96206
 
-### Run the PCA
+
+
+### Run the PCA ###
 
 pca_result <- prcomp(gt_matrix, center = TRUE, scale. = FALSE) 
 summary(pca_result)
 
-## screeplot
+pca_summary <- summary(pca_result)$importance
+pca_summary
 
 
-## scree plot: % variance explained per PC
-pca_result$sdev 
-var_explained <- (pca_result$sdev^2 / sum(pca_result$sdev^2)) * 100 #pca_results$sdev^2 represents the eigenvalues, and sum(pca_results$sdev^2) is the total variance across all PCs combines, which represents the total variance in the original datasets. These results are also the proportion of variace reported in summary(pca_results)
-var_explained
-#View(var_explained)
+colnames(pca_summary)
 
-screeplot <- barplot(var_explained[1:10],
-        names.arg = paste0("PC", 1:10),
-        ylab = "% variance explained",
-        main = "Scree plot")
 
+pca_table <- data.frame(
+  PC = colnames(pca_summary),
+  Percent_Variance = round(pca_summary["Proportion of Variance", ] * 100, 2)) 
+pca_table
+
+pca_table_top10 <- pca_table %>% #The proportion of varance is the same than pca_result$sdev^2, and then (pc_variance/sum(pc_variance))*100 
+  slice_max(order_by = Percent_Variance, n = 10)
+
+pca_table_top10
+
+write_xlsx(pca_table_top10, here("Phenotype", "Tables", "pca_top10_FromR.xlsx"))
+
+pca_table_top10$PC <- factor(pca_table_top10$PC, levels = c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10"))
+
+
+#scree_data #
+screeplot <- ggplot(pca_table_top10, aes(x = PC, y = Percent_Variance)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +   # Draw the background bars
+    scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), expand = c(0, 0)) +
+  labs(
+    title = "PCA Scree Plot with only the first 10 PCs",
+    x = "Principal Component",
+    y = "Variance Explained (%)"
+  ) +  
+  theme_classic()
 
 screeplot
 
-ggsave(screeplot, here("Figures", "screeplot.pdf"), width = 4, height = 2.5, units = "in")
+ggsave(here("Phenotype", "Figures", "screeplot.pdf"), screeplot, width = 4, height = 2.5, units = "in")
 
-
+# Get the pc_scores
 
 ## I will use the pc_scores
 pca_result$x
@@ -130,11 +150,11 @@ Strain_morphotype
 
 ### This file cointains the information about the phylogenetically relatedness, I will store it 
 
-write_csv(Strain_morphotype, here("Tables", "PCA_scores_strains.csv"))
+write_csv(Strain_morphotype, here("Phenotype", "Tables", "PCA_scores_strains.csv"))
 
 ### I will merge this data with the morphology data to be able to color them based on "Morphology" 
 
-Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx"))
+Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx"))
 Strains
 
 ## Plot
@@ -148,21 +168,21 @@ PCA <- ggplot(merge(Strains, pc_scores, by = "Strain_Code"), aes(x = PC1, y = PC
   theme_bw()
 PCA
 
-ggsave(plot = PCA, here("Figures", "PCA.pdf"),
+ggsave(plot = PCA, here("Phenotype", "Figures", "PCA.pdf"),
             width = 6, height = 2.5, units = "in")
 
 ```
 
 ### Co-occurrence ### 
 
-I run an experiment using 4 pairs of strains, and co-inoculated them in 7 reps per plant. The alfalfa variety I used was Oneida. The pairs used were 091 - 101, 015 - 099, 016 - 100 and 029 - 098. The mucoid strains were 0.15, 029, 016, 091 and the dry ones are 098, 099, 100, 101. The pair refers to a co-isolated pair. I later selected 10 nodules per plant, sterilized them, crushed them, and streaked them. Then I observed whether the morphology the nodule was showing was Mucoid, Dry or a Mixture of both of them together. There should be around 70 nodules per Pair.
+We used 4 pairs (each pair is a mucoid a dry strain that were co-isolated together), to co-inoculate alfalfa plants variety "Oneida". We had 7 reps per co-inoculation. We picked the nodules of each plant and randomly chose 10 nodules per plant. We then disinfected, crushed, resuspended and plated each nodule in Yeast Manitol Agar (YEMA)
 
 ```{r}
 
-
-Individual_nodule_data <- read.csv(here("Data_input", "SingleNodule_Ocurrence_data.csv")) #Create this file again I think I deleted it
-Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology
+Individual_nodule_data <- read.csv(here("Phenotype", "Data_input", "SingleNodule_Ocurrence_data.csv")) 
 #View(Individual_nodule_data)
+Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology
+
 ### Create a table that shows the proportions of each morphology in the nodules 
 
 function_pair <- function(Partner) {c(
@@ -181,7 +201,7 @@ colnames(Table_mix_percentage) <- c("Pair", "Number of nodules", "% Mucoid", "% 
 
 Table_mix_percentage
 
-write_xlsx(Table_mix_percentage, here("Tables", "EPS_TableS1_FromR.xlsx"))
+write_xlsx(Table_mix_percentage, here("Phenotype" , "Tables", "EPS_TableS2_FromR.xlsx"))
 
 ## Total number of nodules with mixture and with single 
 
@@ -210,7 +230,7 @@ coocurrence <- ggplot(Individual_nodule_data,
 coocurrence
 
 ggsave(coocurrence, 
-       filename = here("Figures" ,"EPS_FigureS2_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS2_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
 
@@ -221,11 +241,12 @@ ggsave(coocurrence,
 
 Anthrone assay 
 
-For the Anthrone assay experiment, I grew 116 strains of Sinorhizobium meliloti in RDM liquid media for 8 days. Then I centrifuged the samples, and recovered teh supernatant to run the anthrone assay, and resuspended the pellet in saline solution to measure the OD600 so I could normalize data to the OD600. 
+For the Anthrone assay experiment, I grew 116 strains of Sinorhizobium meliloti in RDM liquid media for 8 days. Then I centrifuged the samples, and recovered the supernatant, diluted it to 1:50 and then used the dilution to run the anthrone assay. To estimate the biomass content, resuspended the pellet in saline solution to measure the OD600 so I could normalize data to the OD600. 
 
 ```{r}
 
-Oct2025_AnthroneOD620 <- read_excel(here("Data_input", "AnthroneOD620.xlsx"))
+Oct2025_AnthroneOD620 <- read_excel(here("Phenotype", "Data_input", "AnthroneOD620.xlsx"))
+
 
 ## Substract the Blanks labeled as "Bla" from the OD620 measurements. 
 
@@ -250,7 +271,7 @@ Glucose_standards <- Glucose_standards %>%
   ))
 
 
-## I will extract the coefficients to make a formula and apply that to my current values 
+## I will extract the coefficients to create a linear formula and apply that to my current values 
 
 model <- lm(Glucose_quantity ~ OD620_Adj, data= Glucose_standards) 
 summary(model)
@@ -274,7 +295,7 @@ OD620_strains <- Anthrone620_strains %>%
 
 Oct2025_AnthroneOD600 <- read_excel(here("Data_input", "AnthroneOD600.xlsx"))
 
-### MARIA DON'T FORGET TO MAKE THE CONVERSION AFTER ACCOUNT FOR THE DILUTION. ASK LIANA WETHER I should backcalculate. I am sure it will only change the absolute value. 
+### Ask Niroshan whether it is important to calculate the biomass data to get absolute values. 
 
 Anthrone600 <- Oct2025_AnthroneOD600 %>%
   mutate(OD600_Adj = OD600 - mean(OD600[Name == "Blank"], na.rm = TRUE))

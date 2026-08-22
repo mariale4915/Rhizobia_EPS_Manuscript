@@ -1,5 +1,0 @@
-variant,af,filter-pvalue,lrt-pvalue,beta,beta-std-err,variant_h2,notes,Type
-group_7629,0.667,1.96e-4,3.99e-4,-0.35,0.0958,0.322,bad-chisq,Binary_PA
-group_7069,0.231,5.2e-5,9.52e-4,-0.375,0.111,0.302,NA,Binary_PA
-group_7941,0.103,6.59e-6,3.03e-5,-0.594,0.137,0.375,NA,Binary_PA
-group_7403,0.487,0.974,2.66e-4,-13.3,3.54,0.334,NA,Glucose_PA

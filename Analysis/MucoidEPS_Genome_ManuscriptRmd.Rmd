@@ -25,6 +25,7 @@ library(colorspace)
 library(here)
 library(colorspace) 
 
+set.seed(123)
 ```
 
 I am still importing this information from Sohini's github but as soon as she has decided the information is correct, I can think about moving this to my repository or use the link to hers
@@ -33,22 +34,19 @@ I am still importing this information from Sohini's github but as soon as she ha
 ```{r}
 
 
-tree<-read.tree(here("Data_input", "Genome", "AVT_single_copy_core_concat_outgroup.fasta.treefile")) ### I am using a file that I saw Sohini updated like 11 hours ago, is this the right one? I don' tknow, it says unrooted so I can not run teh statistical test. 
+tree<-read.tree(here("Genotype", "Data_input", "AVT_single_copy_core_concat.fasta.treefile")) ### I am using this file but Sohini still hasn't told me how this file was created (whether it is rooted or not, this is the same tree that was used for Liz's paper) 
 tree
 
 ## Extract the strains in the tree which represents what Sohini used. 
-tip_strains <- data.frame(Strain_Code = tree$tip.label)
+tip_strains <- data.frame(Strain_Code = tree$tip.label) #I am using the Strain_Code name to match the column name for that type of naming system in Strains_Description_Phenotype_Github.xlsx
+#This has
 
-#tip_strains <- tip_strains %>% dplyr::rename(Strain_Code = Strain)
-tip_strains
-## Add the informaiton I am interested in particularly Morphology 
+## Add the information I am interested in, particularly Morphology 
 
-Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx"))
+Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx"))
 Strains ## I will use Morphology and Pairs
 
 meta_tree <- left_join(tip_strains, Strains, by = "Strain_Code") #Making sure none of the tip samples were lost after left_joining with the "Strains" metadata
-
-meta_tree
 
 write_xlsx(meta_tree, here("Tables", "meta_tree.xlsx"))
 
@@ -62,46 +60,46 @@ write_xlsx(meta_tree, here("Tables", "meta_tree.xlsx"))
 
 ## This tables was obtained with the code bcftools gtcheck  -u GT,GT strain_118_variants_diploid.vcf
 
-raw_lines <- read_lines("https://raw.githubusercontent.com/sohini5981/AVT_SS/refs/heads/main/Data/strain_118_variants_pairwise_mismatches.tsv?token=GHSAT0AAAAAAEB5NZNICNZ5L2YG7GHWP4FI2TIXJKA")
+mismatch_data <- read_lines(here("Genotype", "Data_input", "strain_118_variants_pairwise_mismatches.tsv"))
 
-# Keep only the actual data rows (they start with "DCv2", not "#DCv2" or "INFO")
-data_lines <- raw_lines[startsWith(raw_lines, "DCv2")]
-#View(data_lines)
+# Keep only the actual data rows (they start with "DCv2")
+data_lines <- mismatch_data[startsWith(mismatch_data, "DCv2")]
+
 gtcheck_data <- read_tsv(
   I(data_lines),   # I() tells read_tsv to treat this as literal text, not a filepath
   col_names = c("Tag", "Query_Sample", "Genotyped_Sample", "Discordance",
                 "Avg_neg_log_P_HWE", "Sites_compared", "Matching_genotypes")
 )
 
-#View(gtcheck_data)
 gtcheck_data <- gtcheck_data %>% dplyr::select(-Tag)
 
-### Not all of the genotypes that have been compared are paris: 
+### Not all of the genotypes that have been compared are pairs, so I am going to only filter for the ones that are paired: 
 
-Pairs <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx"))
-View(Pairs)
+Pairs <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx"))
+#View(Pairs)
 Pairs <- Pairs %>% filter(!is.na(Pairs))
 
 pairs_wide <- Pairs %>%
   select(Strain_Code, Morphology, Pairs) %>%
   pivot_wider(names_from = Morphology, values_from = Strain_Code)
-View(pairs_wide)
+#View(pairs_wide)
 
-### I am not interested in which is teh query_sample and which one is the genotyped_sample in the strain_118_variants_pairwise_mismatches.tsv
+### I am not interested in which is the query_sample and which one is the genotyped_sample in the strain_118_variants_pairwise_mismatches.tsv. Therefore I will reorganize the gtcheck_data accordingly:
 
 ### Sort the two strain names alphabetically first, so the same pair always produces the same key regardless of which strain in gtcheck is query or genotyped
 
 pairs_wide <- pairs_wide %>%
-  rowwise() %>% ## rowwise() always goes paired with ungroup(). rowwise() function converts a dataframe. into a special grouped form where every single row is treated as its own individual group
+  rowwise() %>% ## rowwise() always goes paired with ungroup(). rowwise() function converts a dataframe into a special grouped form where every single row is treated as its own individual group
   mutate(pair_key = paste(sort(c(Mucoid, Dry)), collapse = "_")) %>%
   ungroup()
-
+pairs_wide
 
 gtcheck_data <- gtcheck_data %>%
   rowwise() %>%
   mutate(pair_key = paste(sort(c(Query_Sample, Genotyped_Sample)), collapse = "_")) %>%
-  ungroup() ## The idea is to put the two strains names in the same alphabeticl order no matter which one came first. So it will create an identical key of AVT29_AVT98
-View(gtcheck_data)
+  ungroup() ## The idea is to put the two strains names in the same alphabetical order no matter which one came first. So it will create an identical key of AVT29_AVT98 than the one created in pairs_wide
+
+#View(gtcheck_data)
 
 
 mismatch_filtered <- merge(pairs_wide, gtcheck_data, by = "pair_key")
@@ -113,6 +111,7 @@ mismatch_filtered <- mismatch_filtered %>%
 #View(mismatch_filtered)
 
 mismatch_filtered
+
 
 hist(mismatch_filtered$SNP_differences)
 
@@ -128,8 +127,17 @@ SNPs_Pairs <- pivot_longer(mismatch_filtered_subset,
              names_to = "Morphology",
              values_to = "Strains")
 
+SNPs_Pairs
 
-write_xlsx(SNPs_Pairs, here("Tables", "SNPs_Pairs.xlsx"))
+SNPs_Pair_wide <- SNPs_Pairs %>%
+  pivot_wider(names_from = Morphology,
+              values_from = Strains)
+SNPs_Pair_wide <- SNPs_Pair_wide %>% rename("Mucoid strain" = "Mucoid", 
+                                            "Dry strain" = "Dry") %>%  select(c("Pairs", "Mucoid strain", "Dry strain", "SNP differences"))
+
+SNPs_Pair_wide
+
+write_xlsx(SNPs_Pair_wide, here("Genotype", "Tables", "EPS_TableS7_FromR.xlsx"))
 
 
 ```
@@ -146,6 +154,8 @@ I am transfering "gene_presence_absence.Rtab", "Binary_phenotype_pyseer.txv" and
 
 # Genotype data: R studio section #
 
+## Genotypic data: presence absence ##
+
 This will have the presence absence and the SNP data
 
 ```{r}
@@ -154,21 +164,21 @@ This will have the presence absence and the SNP data
 
 # I will work with the .Rtab from the panaroo outcome. I will extract the .Rtab file from the following path: /storage/home/mag6678/burghardt/Kayla/avtPacBio/panaroo_output and import them to my local computer
 
-gene_presence_absence_pyseer <- read.delim(here("Data_input", "Genome", "gene_presence_absence.Rtab"), header = TRUE) #I opened panaroo output. In this file strains were labeled in a different way than they were labeled in the phylogenetic tree in Guha et al., 2026, so in the next steps I homogenized the labeling system 
+gene_presence_absence_pyseer <- read.delim(here("Genotype", "Data_input", "gene_presence_absence.Rtab"), header = TRUE) #I opened panaroo output. In this file strains were labeled in a different way than they were labeled in the phylogenetic tree in Guha et al., 2026, so in the next steps I homogenized the labeling system 
 gene_presence_absence_pyseer
 gene_presence_absence_pyseer <- gene_presence_absence_pyseer %>% select(-c("strain_NIG", "strain_EXC")) #Remove the strains that are not part of the AVT collection.
 
-Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx")) # Import the table with the AVT format labels used in Guha et al., 2026 (Strain_Code) and the the one used in this manuscript (Strain). I want the codes in these R.tab document to have the same format than Strain_Code
+Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx")) # Import the table with the AVT format labels used in Guha et al., 2026 (Strain_Code) and the the one used in this manuscript (Strain). I want the codes in these R.tab document to have the same format than Strain_Code
 
 Strains_panaroo <- Strains %>% mutate(Strain_panaroo = paste0("strain_", Strain)) # Replicate the labeling system used in Panaroo
 Strains_panaroo
 
 ## Replace the names in the gene_presence_absence_edited with the AVT1, AVT2, AVT3 names: build the rename map: names(new) = old column name, values = new column name
-
 rename_map <- setNames(Strains_panaroo$Strain_panaroo, Strains_panaroo$Strain_Code) 
 gene_presence_absence_pyseer <- gene_presence_absence_pyseer %>% rename(any_of(rename_map))
+gene_presence_absence_pyseer
 
-write_tsv(gene_presence_absence_pyseer, here("Tables", "gene_presence_absence_rtab_pyseer.tsv"))
+write_tsv(gene_presence_absence_pyseer, here("Genotype", "Tables", "gene_presence_absence_rtab_pyseer.tsv"))
 
 ## Cut the genes that are present in less than 5% and therefore also more than 95% of the strain collection
 
@@ -182,27 +192,22 @@ gene_pa_filtered <- gene_presence_absence_pyseer %>%
   mutate(af = mean(c_across(all_of(strain_cols)))) %>%
   ungroup() %>%
   filter(af >= 0.05 & af <= 0.95) %>%
-  select(-af) ## By cutting the genes that were present in more than 100% I am cutting the genes that were present in all of the strains, which is good becaues I do not want to work with genes that were invariant.
+  select(-af) ## By cutting the genes that were present in more than 100% I am cutting the genes that were present in all of the strains, which is good because I do not want to work with genes that were invariant.
 
 gene_pa_filtered
 
-nrow(gene_pa_filtered) #3592
+nrow(gene_pa_filtered) # 3760
 
-write_tsv(gene_pa_filtered, here("Tables", "gene_presence_absence_rtab_pyseer_maf05.tsv")) 
+write_tsv(gene_pa_filtered, here("Genotype", "Tables",  "gene_presence_absence_rtab_pyseer_maf05.tsv")) 
 
 ```
 
-# Genotypic data: SNPs #
+## Genotypic data: SNPs ##
 
 This code was run in the batch 
 
 ```{r}
 
-
-### Turn the tree in a similarity matrix using pyseer helper script that can be obtained in pyseer github repository (https://github.com/mgalardini/pyseer). It is currently in this path: /storage/home/mag6678/burghardt/MariaGil/pyseer. I will use the script phylogeny_distance.py  to create the kinship matrix that will be used as a random effect when I run pyseer. phylogeny_distance.py should extract the pairwise patristic distances (branch length distances between nodes) from a Newick phylogenetic tree.
-
-
-python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/phylogeny_distance.py --lmm /storage/home/mag6678/burghardt/MariaGil/EPS_genes/panaroo/tree/AVT_single_copy_core_concat.fasta.treefile > phylogeny_similarity.tsv
 
 ### Filter the vcf file 
 
@@ -232,14 +237,14 @@ Strains_pyseer <- Strains_pyseer %>% select(c("Strain_Code", "Binary_trait"))
 Strains_pyseer <- Strains_pyseer %>% rename("samples" = "Strain_Code") ## pyseer wants it labeled as "samples".
 Strains_pyseer
 
-write_tsv(Strains_pyseer, here("Tables", "Binary_phenotype_pyseer.tsv")) 
+write_tsv(Strains_pyseer, here("Genotype", "Tables", "Binary_phenotype_pyseer.tsv")) 
 
 
 
 ## Glucose quantitative data
 
 
-Anthrone_mean <- read_excel(here("Tables", "Anthrone_mean.xlsx"))
+Anthrone_mean <- read_excel(here("Phenotype", "Tables", "Anthrone_mean.xlsx"))
 Anthrone_mean
 
 Anthrone_mean_pyseer <- merge(Anthrone_mean, Strains, by = "Strain")
@@ -263,6 +268,10 @@ That is a reasonable next step. If it is not related, presence/absence. How much
 Account for population structure
 
 ```{r}
+
+### Turn the tree in a similarity matrix using pyseer helper script that can be obtained in pyseer github repository (https://github.com/mgalardini/pyseer). It is currently in this path: /storage/home/mag6678/burghardt/MariaGil/pyseer. I will use the script phylogeny_distance.py  to create the kinship matrix that will be used as a random effect when I run pyseer. phylogeny_distance.py should extract the pairwise patristic distances (branch length distances between nodes) from a Newick phylogenetic tree. I am using the file that does not have the outgroups
+
+
 
 # I will use a glm() when working with the binary phenotype mucoid and dry. I used the script phylogeny_distance.py and worked with the tree generated in Guha et al., 2026 (does not use the flag -lmm)
 

@@ -1,0 +1,80 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fswiss\fcharset0 Helvetica-Bold;\f2\fswiss\fcharset0 Helvetica-Oblique;
+}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww32560\viewh18400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 This Read.Me file has been written to describe the data_input used for this analysis \
+\
+
+\f1\b Genome
+\f0\b0 : \
+\
+
+\f1\b AVT_single_copy_core_concat_outgroup.fasta.treefile\
+
+\f0\b0 \
+
+\f1\b \
+Strains_Description_Phenotype_Github.xlsx\
+
+\f0\b0 \
+This file describes the two types of code we used to name the strains, the morphology, and the number of co-isolated pairs. \
+\
+
+\f2\i * Strain_Code
+\f0\i0 : This is the naming system that was used to write Guha et a., 2026, and these names were used when creating the maximum-likelihood phylogenetic tree that is present in the files AVT_single_copy_core_concat_outgroup.fasta.treefile, and the file AVT_single_copy_core_concat.fasta.treefile\
+* 
+\f2\i Strain
+\f0\i0 : This naming system was originally used when isolating the strains, and we used it for the Paillan et al., 2026\
+* 
+\f2\i Morphology
+\f0\i0 : This is the morphology of each of the strains. From strain 001 to 096, the strains were mucoid; from strain 097 to 123, they displayed a dry morphology \
+* 
+\f2\i Pairs
+\f0\i0 : 19 of the co-isolated pairs were sent for whole-genome sequencing. The same number means that they are the mucoid and dry bacteria that were part of the pair\
+\
+
+\f1\b strain_118_variants_pairwise_mismatches.tsv\
+
+\f0\b0 \
+This file was generated in Guha et al., 2026. Briefly, it was produced by bcftools (1.23.1+htslib-1.23.1). The command line was: bcftools gtcheck  -u GT,GT strain_118_variants_diploid.vcf. The idea was to compare the matching and mismatching sites using the variant calling format (VCF) of all of the AVT strains in the collection. The file can be found in this repository, but it can also be found in the GitHub path: Data/strain_118_variants_pairwise_mismatches.tsv\
+\
+
+\f2\i Query sample
+\f0\i0  and 
+\f2\i Genotyped sample
+\f0\i0  are the samples that were contrasted against each other\
+
+\f2\i Discordance
+\f0\i0 : This is a dissimilarity score between the two samples. The bigger the numbers, the more different the genotypes. Samples that are compared across more sites tend to yield higher raw scores simply because they have more data. \
+
+\f2\i Average -log P(HWE)
+\f0\i0 : This helps assess whether the samples appear similar by chance.  A higher value indicates a better match because it means the observed match pattern is very unlikely to have occurred randomly.\
+
+\f2\i Number of sites compared:
+\f0\i0  How many variant positions had usable genotype data in both of the samples that were compared? The bigger the number of sites compared in a pair of samples, the more informative it is\
+
+\f2\i Number of matching genotypes: 
+\f0\i0 This indicates how many genotype calls were identical across the two samples after comparing sites. \
+
+\f1\b \
+\
+strain_118_variants.vcf\
+
+\f0\b0 \
+This file was constructed in Guha et al., 2026 and the process is under \'93Variant calling on AVT genomes\'94 in Materials and Methods. Briefly, AVT118 was chosen as the in-house reference strain, and the variant calling (vcf) file was created after mapping the short reads of each AVT strain to that reference genome.\
+\
+\
+
+\f1\b gene_presence_absence.Rtab\
+
+\f0\b0 \
+This is one of the panaroo outputs from Guha et al., 2026 that represents the presence-absence matrix. This is the preferred format to run PySeer. \
+Gene: name of the group that represents the clusters of genes with high similarity\
+The remaining columns contain the strain names in the format \'93strain_xxx\'94 used by the person who ran the Panaroo output. To be able to use this file with the other files we had (phylogenetic data and phenotypic data), we merged this file with 
+\f1\b Strains_Description_Phenotype_Github.xlsx 
+\f0\b0 that contains the other labeles that we use\
+}
