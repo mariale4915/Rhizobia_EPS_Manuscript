@@ -9,41 +9,40 @@ output: html_document
 
 
 ```{r}
-
+library(performance)
 library(lmerTest)
-library(readxl)
 library(ggbeeswarm)
-library(glmmTMB)
+#library(glmmTMB)
 library(here)
 library(ggplot2) 
 library(readxl)
-library(writexl)
-library(tidyverse)
-library(dplyr)
-library(lme4)
 library(dplyr)
 library(writexl)
-library(emmeans)
 library(tidyverse)
-library(here)
-library(ggplot2)
 library(remotes)
-library(lmerTest)
 library(ggridges)
-library(ggbeeswarm)
 library(scales)
 library(broom)
-library(dplyr)
-library(writexl)
 library(vcfR)
 library(adegenet)
 library(car)
+library(multcomp)
+
+citation("car")
+citation("multcomp")
+citation("lmerTest")
+citation("vcfR")
 
 ```
 
 #### Setting up the color pallette ####
 
 ```{r}
+
+## What R version am I using##
+
+R.version.string
+
 
 color_values <- c("Mucoid" = "#4eadb9",
                   "Dry" = "#e0ba3e",
@@ -63,7 +62,7 @@ I will open Sohini's recent vcf file created with the alignment to reference gen
 
 ```{r}
 
-vcf <- read.vcfR(here("Data_input", "Genome", "strain_118_variants.vcf"))
+vcf <- read.vcfR(here("Genotype", "Data_input", "strain_118_variants.vcf"))
 
 gt_reference <- extract.gt(vcf, element = "GT") ## 0 and 1
 gt_reference
@@ -293,7 +292,7 @@ OD620_strains <- Anthrone620_strains %>%
 
 ### Calculate the OD600
 
-Oct2025_AnthroneOD600 <- read_excel(here("Data_input", "AnthroneOD600.xlsx"))
+Oct2025_AnthroneOD600 <- read_excel(here("Phenotype", "Data_input", "AnthroneOD600.xlsx"))
 
 ### Ask Niroshan whether it is important to calculate the biomass data to get absolute values. 
 
@@ -327,7 +326,7 @@ Anthrone_complete
 
 Anthrone_complete <- Anthrone_complete %>% filter(Strain != "121")
 
-write_csv(Anthrone_complete, here("Tables", "Anthrone_complete.csv"))
+write_csv(Anthrone_complete, here("Phenotype", "Tables", "Anthrone_complete.csv"))
 
 
 ## Calculate the mean of each strain and not only of each tube (technical replicate)
@@ -335,14 +334,17 @@ Anthrone_mean <- Anthrone_complete %>%
   group_by(Strain, Morphology) %>%
   summarise(Glucose_OD600_ave = mean(Glucose_OD600))
 
-write_csv(Anthrone_mean, here("Tables", "Anthrone_mean.csv"))
-
+write_csv(Anthrone_mean, here("Phenotype", "Tables", "Anthrone_mean.csv"))
+```
 
 #### Anthrone per pair - Figure ####
 
-## Open the file that has the description of the strains and subset the strains that are within a Pair 
+## Assess whether mucoid bacteria have higher EPS production disregarding of the Pair ## 
 
-Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx"))
+
+```{r}
+
+Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx"))
 
 
 Strain_used_pair <- Strains %>% filter(!is.na(Pairs)) %>% select(-"Morphology") ## Subset the strains that have a pair for this analysis and filter out Morphology column so it doesn't get duplicated when we do the "Anthrone_complete"
@@ -380,40 +382,14 @@ Pairs_anthrone <- ggplot(Pair_Anthrone_complete, aes(x = Pairs, y = Glucose_OD60
 
 Pairs_anthrone
 
-ggsave(Pairs_anthrone, file = here("Figures", "EPS_FigureS2A_FromR.pdf"), width = 10, height = 10, units = "in")
+ggsave(Pairs_anthrone, file = here("Phenotype", "Figures", "EPS_FigureS2A_FromR.pdf"), width = 10, height = 10, units = "in")
 
 #### Anthrone per pair - Stats ####
 
-
 model1_raw <- lmerTest::lmer(Glucose_OD600 ~ Morphology + (1|Pairs), data = Pair_Anthrone_complete)
 
-# Fixed effects: estimate, SE, df, t, p 
 summary(model1_raw)
-
-#Cleaner extraction
-fixed_effects <- as.data.frame(summary(model1_raw)$coefficients)
-fixed_effects
-
-# Random effect: variance, SD and how much it matters
-VarCorr(model1_raw)
-as.data.frame(VarCorr(model1_raw)) #Arranging the table as a datframe
-
-# ICC: Proportion of total variance explained by pairs. This explains how important is the random effect
-#install.packages("performance")
-library(performance)
-icc(model1_raw)
-
-# LRT: Whether the random effect is statistically justified
-ranova(model1_raw)
-
-## Model degrees of freedome
-cat("N observations:", nobs(model1_raw), "\n")
-cat("N pairs (grouping levels):", ngrps(model1_raw), "\n")
-
-#fixed_effects
-fixed_effects_lm
-fixed_effects_lm <- rownames_to_column(as.data.frame(fixed_effects), var = "Term")
-fixed_effects_lm
+summary(model1_raw)$coefficients
 
 ### To create the table to export 
 
@@ -426,22 +402,28 @@ fixed_effects <- as.data.frame(summary(model1_raw)$coefficients) %>%
     p_value = ifelse(as.numeric(p_value) < 0.001, "< 0.001", sprintf("%.3f", as.numeric(p_value)))
   )
 
-### Randome effect table
+### Random effect table
 
-var_corr <- as.data.frame(VarCorr(model1_raw))
-# var_corr has columns: grp, var1, vcov, sdcor -- pull out the Pairs row
+var_corr <- as.data.frame(VarCorr(model1_raw)) # var_corr has columns: grp, var1, vcov, sdcor
+var_corr
 pairs_variance <- var_corr$vcov[var_corr$grp == "Pairs"]
+pairs_variance
 pairs_sd <- var_corr$sdcor[var_corr$grp == "Pairs"]
+pairs_sd
 residual_variance <- var_corr$vcov[var_corr$grp == "Residual"]
+residual_variance
+
 
 # LRT for the random effect 
 lrt_result <- ranova(model1_raw)
-# ranova() returns a row for the tested random effect (not the <none> row)
+lrt_result
 lrt_row <- lrt_result[rownames(lrt_result) != "<none>", ]
-
+lrt_row
 
 #
 icc_value <- icc(model1_raw)
+icc_value
+
 
 ### Combined the supplementary tables 
 
@@ -460,7 +442,7 @@ random_effects_rows <- data.frame(
 full_table <- bind_rows(fixed_effects, random_effects_rows)
 full_table
  
-write_xlsx(full_table, here("Tables", "EPS_TableS4_FromR.xlsx"))
+write_xlsx(full_table, here("Phenotype", "Tables", "EPS_TableS4_FromR.xlsx"))
 
 
 
@@ -498,10 +480,9 @@ Histo_balls <- ggplot(Anthrone_mean, aes(x = Glucose_OD600_ave)) +
 Histo_balls
 
 
-ggsave(Histo_balls, file = here("Figures", "EPS_FigureS2B_FromR.pdf"), width = 10, height = 10, units = "in")
+ggsave(Histo_balls, file = here("Phenotype", "Figures", "EPS_FigureS2B_FromR.pdf"), width = 10, height = 10, units = "in")
 
 #### Anthrone - whole collection - stats ####
-
 
 aov2 <- aov(data = Anthrone_mean, Glucose_OD600_ave ~ Morphology)
 aov2
@@ -514,7 +495,9 @@ anova2_Table <- anova2 %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
   dplyr::select(-`Mean Sq`)
 
-write_xlsx(anova2_Table, here("Tables", "EPS_TableS5_FromR.xlsx"))
+anova2_Table
+
+write_xlsx(anova2_Table, here("Phenotype", "Tables", "EPS_TableS5_FromR.xlsx"))
 ```
 
 
@@ -524,7 +507,7 @@ We will first determine if there is an effect of phylogenetic relatedness in the
 
 ```{r}
 
-Strain_morphotype <- read_csv(here("Tables", "PCA_scores_strains.csv"))
+Strain_morphotype <- read_csv(here("Phenotype", "Tables", "PCA_scores_strains.csv"))
 Strain_morphotype
 
 ### Morphotype ###
@@ -552,13 +535,13 @@ anova <- anova %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>Chisq)` = ifelse(as.numeric(`Pr(>Chisq)`) < 0.001, "< 0.001", `Pr(>Chisq)`))
 
-write_xlsx(anova, here("Tables", "PopStru_Binomial_FromR.xlsx"))
+write_xlsx(anova, here("Phenotype", "Tables", "PopStru_Binomial_FromR.xlsx"))
 
 
 ### Normalized Glucose ###
 
 
-Anthrone_mean <- read_csv(here("Tables", "Anthrone_mean.csv"))
+Anthrone_mean <- read_csv(here("Phenotype", "Tables", "Anthrone_mean.csv"))
 Anthrone_mean
 
 Anthrone_phylo_ave <- merge(Anthrone_mean %>% select(-"Morphology"), Strain_morphotype, by = "Strain")
@@ -579,7 +562,7 @@ anova <- anova %>%
   dplyr::select(-`Mean Sq`)
 anova
 
-write_xlsx(anova, here("Tables", "EPS_TableEPS_Phylogeny_FromR.xlsx"))
+write_xlsx(anova, here("Phenotype", "Tables", "EPS_TableEPS_Phylogeny_FromR.xlsx"))
 
 
 
@@ -597,8 +580,8 @@ Open files
 
 ```{r}
 
-soil_data <- read_excel(here("Data_input", "Soil_Survival&Growth.xlsx"))
-soil_data
+soil_data <- read_excel(here("Phenotype", "Data_input", "Soil_Survival&Growth.xlsx"))
+#View(soil_data)
 soil_data <- soil_data %>% filter(!is.na(Volume_ul)) #Filtering out the ones that were not assessed
 soil_data <- soil_data %>% filter(Rep_tube != "s") #Filtering out the "sacrificed" plants
 
@@ -846,7 +829,7 @@ Growth_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Growth", Po
 Growth_Mixture
 
 ggsave(Growth_Mixture, 
-       filename = here("Figures" ,"EPS_Figure3A_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_Figure3A_FromR.pdf"),
        device = "pdf",
        height = 4, width = 5, units = "in")
 
@@ -863,8 +846,8 @@ ggsave(Growth_Mixture,
 ### Make a table
 unique(soil.expanded_ave$Treatment)
 ### 32 C
-View(soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
-View(soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
+#View(soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
+#View(soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
 
 ```
 
@@ -908,7 +891,7 @@ Growth_DryPercentage
 
 
 ggsave(Growth_DryPercentage, 
-       filename = here("Figures","EPS_Figure3C_FromR.pdf"), 
+       filename = here("Phenotype", "Figures","EPS_Figure3C_FromR.pdf"), 
        device = "pdf", 
        height = 4, width = 5, units = "in")
 
@@ -932,134 +915,130 @@ anova_Mixed_PercDry_Growth <- anova_Mixed_PercDry_Growth %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
   dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
-write_xlsx(anova_Mixed_PercDry_Growth, here("Tables", "EPS_anova_Mixed_PercDry_Growth_FromR.xlsx"))
+write_xlsx(anova_Mixed_PercDry_Growth, here("Phenotype", "Tables", "EPS_anova_Mixed_PercDry_Growth_FromR.xlsx"))
 
 
 ## I will subset the each treatment and see what timepoints statistically have higher percentage of dry bacteria
 
 ### 32 C ###
-
-aov_Mixed_PercDry_Growth_32C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
-                                filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "32 °C")) 
+Growth_32 <- soil.expanded_ave %>%filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "32 °C")
+aov_Mixed_PercDry_Growth_32C <- aov(Percentage_Dry_ave ~ Timepoint, Growth_32) 
 summary(aov_Mixed_PercDry_Growth_32C)
 anova_Mixed_PercDry_Growth_32C <- anova(aov_Mixed_PercDry_Growth_32C)
 
 anova_Mixed_PercDry_Growth_32C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Growth_32C), var = "Term")
-anova_Mixed_PercDry_Growth_32C
+anova_Mixed_PercDry_Growth_32C <- anova_Mixed_PercDry_Growth_32C %>% mutate(Treatment = "32 °C")
 
-anova_Mixed_PercDry_Growth_32C <- anova_Mixed_PercDry_Growth_32C %>%
-  mutate(Treatment = "32 °C") %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
-#write_xlsx(anova_Mixed_PercDry_Growth_32C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Growth_32C_FromR.xlsx"))
+### Dunnett test
 
-### Tukey test
+Growth_32$Timepoint <- relevel(factor(Growth_32$Timepoint), ref = "0")
 
-Tukey_Mixed_PercDry_Growth_32C <- TukeyHSD(aov_Mixed_PercDry_Growth_32C)
-Tukey_Mixed_PercDry_Growth_32C
-Tukey_Mixed_PercDry_Growth_32C <- as.data.frame(Tukey_Mixed_PercDry_Growth_32C$`Timepoint`) %>%
-  rownames_to_column(var = "Comparison") %>%
-  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
-  mutate(Treatment = "32 °C") %>%
-  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
-  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
-#write_xlsx(Tukey_Mixed_PercDry_Growth_32C, here("Tables", "EPS_Tukey_Mixed_PercDry_Growth_32C_FromR.xlsx"))
+dunnett_Mixed_PercDry_Growth_32C <- glht(aov_Mixed_PercDry_Growth_32C, linfct = mcp(Timepoint = "Dunnett"))
+summary(dunnett_Mixed_PercDry_Growth_32C)
+dunnett_summary <- summary(dunnett_Mixed_PercDry_Growth_32C)
+
+Dunnett_Mixed_PercDry_Growth_32C <- data.frame(
+  Treatment = "32 °C",
+  Comparison = names(dunnett_summary$test$coefficients),
+  diff = sprintf("%.3f", dunnett_summary$test$coefficients),
+  P = ifelse(dunnett_summary$test$pvalues < 0.001, "< 0.001",
+             sprintf("%.3f", dunnett_summary$test$pvalues))
+)
+
+Dunnett_Mixed_PercDry_Growth_32C
+
 
 
 ### 22 C ###
 
 
-
-aov_Mixed_PercDry_Growth_22C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
-                                filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "22 °C")) 
+Growth_22 <- soil.expanded_ave %>%filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "22 °C")
+aov_Mixed_PercDry_Growth_22C <- aov(Percentage_Dry_ave ~ Timepoint, Growth_22) 
 summary(aov_Mixed_PercDry_Growth_22C)
 anova_Mixed_PercDry_Growth_22C <- anova(aov_Mixed_PercDry_Growth_22C)
 
 anova_Mixed_PercDry_Growth_22C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Growth_22C), var = "Term")
+anova_Mixed_PercDry_Growth_22C <- anova_Mixed_PercDry_Growth_22C %>% mutate(Treatment = "22 °C")
 anova_Mixed_PercDry_Growth_22C
 
-anova_Mixed_PercDry_Growth_22C <- anova_Mixed_PercDry_Growth_22C %>%
-  mutate(Treatment = "22 °C") %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
-#write_xlsx(anova_Mixed_PercDry_Growth_22C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Growth_22C_FromR.xlsx"))
+### Dunnett test
 
-### Tukey test
+Growth_22$Timepoint <- relevel(factor(Growth_22$Timepoint), ref = "0")
 
-Tukey_Mixed_PercDry_Growth_22C <- TukeyHSD(aov_Mixed_PercDry_Growth_22C)
-Tukey_Mixed_PercDry_Growth_22C
-Tukey_Mixed_PercDry_Growth_22C <- as.data.frame(Tukey_Mixed_PercDry_Growth_22C$`Timepoint`) %>% 
-  rownames_to_column(var = "Comparison") %>%
-  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
-  mutate(Treatment = "22 °C") %>%
-  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
-  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+dunnett_Mixed_PercDry_Growth_22C <- glht(aov_Mixed_PercDry_Growth_22C, linfct = mcp(Timepoint = "Dunnett"))
+summary(dunnett_Mixed_PercDry_Growth_22C)
+dunnett_summary <- summary(dunnett_Mixed_PercDry_Growth_22C)
 
-#write_xlsx(Tukey_Mixed_PercDry_Growth_22C, here("Tables", "EPS_Tukey_Mixed_PercDry_Growth_22C_FromR.xlsx"))
+Dunnett_Mixed_PercDry_Growth_22C <- data.frame(
+  Treatment = "22 °C",
+  Comparison = names(dunnett_summary$test$coefficients),
+  diff = sprintf("%.3f", dunnett_summary$test$coefficients),
+  P = ifelse(dunnett_summary$test$pvalues < 0.001, "< 0.001",
+             sprintf("%.3f", dunnett_summary$test$pvalues))
+)
 
+Dunnett_Mixed_PercDry_Growth_22C
 
 
 
 
 ### Drought ###
 
+Growth_drought <- soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "Drought")
 
-
-aov_Mixed_PercDry_Growth_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
-                                filter(Condition == "Growth" & Population_Morphology == "Mixture", Treatment == "Drought")) 
+aov_Mixed_PercDry_Growth_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, Growth_drought) 
 summary(aov_Mixed_PercDry_Growth_DroughtC)
 anova_Mixed_PercDry_Growth_DroughtC <- anova(aov_Mixed_PercDry_Growth_DroughtC)
 
 anova_Mixed_PercDry_Growth_DroughtC <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Growth_DroughtC), var = "Term")
 anova_Mixed_PercDry_Growth_DroughtC
+anova_Mixed_PercDry_Growth_DroughtC <- anova_Mixed_PercDry_Growth_DroughtC %>% mutate(Treatment = "Drought")
 
-anova_Mixed_PercDry_Growth_DroughtC <- anova_Mixed_PercDry_Growth_DroughtC %>%
-  mutate(Treatment = "Drought") %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+### Dunnett test
 
-#write_xlsx(anova_Mixed_PercDry_Growth_DroughtC, here("Tables", "EPS_anova_anova_Mixed_PercDry_Growth_DroughtC_FromR.xlsx"))
+Growth_drought$Timepoint <- relevel(factor(Growth_drought$Timepoint), ref = "0")
 
-### Tukey test
+dunnett_Mixed_PercDry_Growth_drought <- glht(aov_Mixed_PercDry_Growth_DroughtC, linfct = mcp(Timepoint = "Dunnett"))
+summary(dunnett_Mixed_PercDry_Growth_drought)
+dunnett_summary <- summary(dunnett_Mixed_PercDry_Growth_drought)
 
-Tukey_Mixed_PercDry_Growth_DroughtC <- TukeyHSD(aov_Mixed_PercDry_Growth_DroughtC)
-Tukey_Mixed_PercDry_Growth_DroughtC
-Tukey_Mixed_PercDry_Growth_DroughtC <- as.data.frame(Tukey_Mixed_PercDry_Growth_DroughtC$`Timepoint`) %>% 
-  rownames_to_column(var = "Comparison") %>%
-  mutate(Treatment = "Drought") %>%
-  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
-  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
-  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+Dunnett_Mixed_PercDry_Growth_drought <- data.frame(
+  Treatment = "Drought",
+  Comparison = names(dunnett_summary$test$coefficients),
+  diff = sprintf("%.3f", dunnett_summary$test$coefficients),
+  P = ifelse(dunnett_summary$test$pvalues < 0.001, "< 0.001",
+             sprintf("%.3f", dunnett_summary$test$pvalues))
+)
 
-#write_xlsx(Tukey_Mixed_PercDry_Growth_DroughtC, here("Tables", "EPS_Tukey_Mixed_PercDry_Growth_DroughtC_FromR.xlsx"))
+Dunnett_Mixed_PercDry_Growth_drought
+
 
 #### Compile the Anovas ####
 
+anova_Mixed_PercDry_Growth_22C
+anova_Mixed_PercDry_Growth_32C
+anova_Mixed_PercDry_Growth_DroughtC
+
 Anova_Growth_soil_Treatments <- bind_rows(anova_Mixed_PercDry_Growth_22C, anova_Mixed_PercDry_Growth_32C, anova_Mixed_PercDry_Growth_DroughtC)
+
+Anova_Growth_soil_Treatments <- Anova_Growth_soil_Treatments %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`) %>%
+  dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "P")
 Anova_Growth_soil_Treatments
 
-write_xlsx(Anova_Growth_soil_Treatments, here("Tables", "EPS_Anova_Growth_soil_Treatments_FromR.xlsx"))
+write_xlsx(Anova_Growth_soil_Treatments, here("Phenotype", "Tables", "EPS_Anova_Growth_soil_Treatments_FromR.xlsx"))
 
 
-#### Compile the Tukey tests ####
+#### Compile the Dunnett tests ####
 
-Tukey_Growth_soil <- bind_rows(Tukey_Mixed_PercDry_Growth_22C, Tukey_Mixed_PercDry_Growth_32C,Tukey_Mixed_PercDry_Growth_DroughtC)
-Tukey_Growth_soil
+dunnett_growth_all <- rbind(Dunnett_Mixed_PercDry_Growth_32C, Dunnett_Mixed_PercDry_Growth_22C, Dunnett_Mixed_PercDry_Growth_drought)
 
-Tukey_wide_Growth_soil <- Tukey_Growth_soil %>%
-  pivot_wider(
-    names_from = Treatment,
-    values_from = c(diff, P)
-  )
-Tukey_wide_Growth_soil <- Tukey_wide_Growth_soil %>% select(Comparison, `diff_22 °C`, `P_22 °C`, `diff_32 °C`, `P_32 °C`, diff_Drought, P_Drought)
-Tukey_wide_Growth_soil
-
-write_xlsx(Tukey_wide_Growth_soil, here("Tables", "EPS_Tukey_wide_Growth_soil_FromR.xlsx"))
+dunnett_growth_all
+write_xlsx(dunnett_growth_all, here("Phenotype", "Tables", "EPS_Growth_Dunnett.xlsx"))
 
 
 ```
@@ -1069,7 +1048,6 @@ write_xlsx(Tukey_wide_Growth_soil, here("Tables", "EPS_Tukey_wide_Growth_soil_Fr
 ###### Population size ######
 
 ```{r}
-
 
 Survival_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Survival", Population_Morphology == "Mixture"),
        aes(x = Timepoint, y = median,
@@ -1102,7 +1080,7 @@ Survival_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Survival"
 Survival_Mixture
 
 ggsave(Survival_Mixture, 
-       filename = here("Figures" ,"EPS_Figure3B_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_Figure3B_FromR.pdf"),
        device = "pdf",
        height = 4, width = 5, units = "in")
 
@@ -1124,173 +1102,162 @@ anova_Mixed_PercDry_Survival <- anova_Mixed_PercDry_Survival %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
   dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
-write_xlsx(anova_Mixed_PercDry_Survival, here("Tables", "EPS_anova_Mixed_PercDry_Survival_FromR.xlsx"))
+write_xlsx(anova_Mixed_PercDry_Survival, here("Phenotype", "Tables", "EPS_anova_Mixed_PercDry_Survival_FromR.xlsx"))
 
 
 ## I will subset the each treatment and see what timepoints statistically have higher percentage of dry bacteria
 
+
+
 ### 32 C ###
 
-aov_Mixed_PercDry_Survival_32C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
-                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "32 °C")) 
-summary(aov_Mixed_PercDry_Survival_32C)
+Survival_32C <- soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "32 °C")
+
+aov_Mixed_PercDry_Survival_32C <- aov(Percentage_Dry_ave ~ Timepoint, Survival_32C) 
+#summary(aov_Mixed_PercDry_Survival_32C)
 anova_Mixed_PercDry_Survival_32C <- anova(aov_Mixed_PercDry_Survival_32C)
 
 anova_Mixed_PercDry_Survival_32C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_32C), var = "Term")
-anova_Mixed_PercDry_Survival_32C
+anova_Mixed_PercDry_Survival_32C <- anova_Mixed_PercDry_Survival_32C %>% mutate(Treatment = "32 °C")
 
-anova_Mixed_PercDry_Survival_32C <- anova_Mixed_PercDry_Survival_32C %>%
-  mutate(Treatment = "32 °C") %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+## Dunnett test
 
-#write_xlsx(anova_Mixed_PercDry_Survival_32C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_32C_FromR.xlsx"))
+Survival_32C$Timepoint <- relevel(factor(Survival_32C$Timepoint), ref = "0")
 
-### Tukey test
+aov_Mixed_PercDry_Survival_32C <- glht(aov_Mixed_PercDry_Survival_32C, linfct = mcp(Timepoint = "Dunnett"))
+summary(aov_Mixed_PercDry_Survival_32C)
+dunnett_summary <- summary(aov_Mixed_PercDry_Survival_32C)
 
-Tukey_Mixed_PercDry_Survival_32C <- TukeyHSD(aov_Mixed_PercDry_Survival_32C)
-Tukey_Mixed_PercDry_Survival_32C
-Tukey_Mixed_PercDry_Survival_32C <- as.data.frame(Tukey_Mixed_PercDry_Survival_32C$`Timepoint`) %>%
-  rownames_to_column(var = "Comparison") %>%
-  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
-  mutate(Treatment = "32 °C") %>%
-  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
-  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
-#write_xlsx(Tukey_Mixed_PercDry_Survival_32C, here("Tables", "EPS_Tukey_Mixed_PercDry_Survival_32C_FromR.xlsx"))
+Dunnett_Mixed_PercDry_Survival_32C <- data.frame(
+  Treatment = "32 °C",
+  Comparison = names(dunnett_summary$test$coefficients),
+  diff = sprintf("%.3f", dunnett_summary$test$coefficients),
+  P = ifelse(dunnett_summary$test$pvalues < 0.001, "< 0.001",
+             sprintf("%.3f", dunnett_summary$test$pvalues))
+)
 
+Dunnett_Mixed_PercDry_Survival_32C
 
 
 
 ### 22 C ###
 
+Survival_22C <- soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "22 °C")
 
 
-aov_Mixed_PercDry_Survival_22C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
-                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "22 °C")) 
+aov_Mixed_PercDry_Survival_22C <- aov(Percentage_Dry_ave ~ Timepoint, Survival_22C) 
 summary(aov_Mixed_PercDry_Survival_22C)
 anova_Mixed_PercDry_Survival_22C <- anova(aov_Mixed_PercDry_Survival_22C)
 
 anova_Mixed_PercDry_Survival_22C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_22C), var = "Term")
-anova_Mixed_PercDry_Survival_22C
+anova_Mixed_PercDry_Survival_22C <- anova_Mixed_PercDry_Survival_22C %>% mutate(Treatment = "22 °C")
 
-anova_Mixed_PercDry_Survival_22C <- anova_Mixed_PercDry_Survival_22C %>%
-  mutate(Treatment = "22 °C") %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+## Dunnett test
 
-#write_xlsx(anova_Mixed_PercDry_Survival_22C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_22C_FromR.xlsx"))
+Survival_22C$Timepoint <- relevel(factor(Survival_22C$Timepoint), ref = "0")
 
-### Tukey test
+aov_Mixed_PercDry_Survival_22C <- glht(aov_Mixed_PercDry_Survival_22C, linfct = mcp(Timepoint = "Dunnett"))
+summary(aov_Mixed_PercDry_Survival_22C)
+dunnett_summary <- summary(aov_Mixed_PercDry_Survival_22C)
 
-Tukey_Mixed_PercDry_Survival_22C <- TukeyHSD(aov_Mixed_PercDry_Survival_22C)
-Tukey_Mixed_PercDry_Survival_22C
-Tukey_Mixed_PercDry_Survival_22C <- as.data.frame(Tukey_Mixed_PercDry_Survival_22C$`Timepoint`) %>% 
-  rownames_to_column(var = "Comparison") %>%
-  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
-  mutate(Treatment = "22 °C") %>%
-  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
-  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+Dunnett_Mixed_PercDry_Survival_22C <- data.frame(
+  Treatment = "22 °C",
+  Comparison = names(dunnett_summary$test$coefficients),
+  diff = sprintf("%.3f", dunnett_summary$test$coefficients),
+  P = ifelse(dunnett_summary$test$pvalues < 0.001, "< 0.001",
+             sprintf("%.3f", dunnett_summary$test$pvalues))
+)
 
-#write_xlsx(Tukey_Mixed_PercDry_Survival_22C, here("Tables", "EPS_Tukey_Mixed_PercDry_Survival_22C_FromR.xlsx"))
-
-
+Dunnett_Mixed_PercDry_Survival_22C
 
 
 
 ### Drought ###
 
+Survival_Drought <- soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "Drought")
 
-
-aov_Mixed_PercDry_Survival_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
-                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "Drought")) 
+aov_Mixed_PercDry_Survival_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, Survival_Drought) 
 summary(aov_Mixed_PercDry_Survival_DroughtC)
 anova_Mixed_PercDry_Survival_DroughtC <- anova(aov_Mixed_PercDry_Survival_DroughtC)
 
 anova_Mixed_PercDry_Survival_DroughtC <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_DroughtC), var = "Term")
-anova_Mixed_PercDry_Survival_DroughtC
+anova_Mixed_PercDry_Survival_DroughtC <- anova_Mixed_PercDry_Survival_DroughtC %>% mutate(Treatment = "Drought")
 
-anova_Mixed_PercDry_Survival_DroughtC <- anova_Mixed_PercDry_Survival_DroughtC %>%
-  mutate(Treatment = "Drought") %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
-#write_xlsx(anova_Mixed_PercDry_Survival_DroughtC, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_DroughtC_FromR.xlsx"))
+### Dunnett test
 
-### Tukey test
+Survival_Drought$Timepoint <- relevel(factor(Survival_Drought$Timepoint), ref = "0")
 
-Tukey_Mixed_PercDry_Survival_DroughtC <- TukeyHSD(aov_Mixed_PercDry_Survival_DroughtC)
-Tukey_Mixed_PercDry_Survival_DroughtC
-Tukey_Mixed_PercDry_Survival_DroughtC <- as.data.frame(Tukey_Mixed_PercDry_Survival_DroughtC$`Timepoint`) %>% 
-  rownames_to_column(var = "Comparison") %>%
-  mutate(Treatment = "Drought") %>%
-  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
-  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
-  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+aov_Mixed_PercDry_Survival_DroughtC <- glht(aov_Mixed_PercDry_Survival_DroughtC, linfct = mcp(Timepoint = "Dunnett"))
+summary(aov_Mixed_PercDry_Survival_DroughtC)
+dunnett_summary <- summary(aov_Mixed_PercDry_Survival_DroughtC)
 
-#write_xlsx(Tukey_Mixed_PercDry_Survival_DroughtC, here("Tables", "EPS_Tukey_Mixed_PercDry_Survival_DroughtC_FromR.xlsx"))
+Dunnett_Mixed_PercDry_Survival_Drought <- data.frame(
+  Treatment = "Drought",
+  Comparison = names(dunnett_summary$test$coefficients),
+  diff = sprintf("%.3f", dunnett_summary$test$coefficients),
+  P = ifelse(dunnett_summary$test$pvalues < 0.001, "< 0.001",
+             sprintf("%.3f", dunnett_summary$test$pvalues))
+)
+
+Dunnett_Mixed_PercDry_Survival_Drought
 
 
 ### 4 C ###
 
+Survival_4C <- soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "4 °C")
 
-
-aov_Mixed_PercDry_Survival_4C <- aov(Percentage_Dry_ave ~ Timepoint, soil.expanded_ave %>% 
-                                filter(Condition == "Survival" & Population_Morphology == "Mixture", Treatment == "4 °C")) 
+aov_Mixed_PercDry_Survival_4C <- aov(Percentage_Dry_ave ~ Timepoint, Survival_4C) 
 summary(aov_Mixed_PercDry_Survival_4C)
 anova_Mixed_PercDry_Survival_4C <- anova(aov_Mixed_PercDry_Survival_4C)
 
 anova_Mixed_PercDry_Survival_4C <- rownames_to_column(as.data.frame(anova_Mixed_PercDry_Survival_4C), var = "Term")
-anova_Mixed_PercDry_Survival_4C
+anova_Mixed_PercDry_Survival_4C <- anova_Mixed_PercDry_Survival_4C %>% mutate(Treatment = "4 °C")
 
-anova_Mixed_PercDry_Survival_4C <- anova_Mixed_PercDry_Survival_4C %>%
-  mutate(Treatment = "4 °C") %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+### Dunnett test
 
-#write_xlsx(anova_Mixed_PercDry_Survival_4C, here("Tables", "EPS_anova_anova_Mixed_PercDry_Survival_4C_FromR.xlsx"))
+Survival_4C$Timepoint <- relevel(factor(Survival_4C$Timepoint), ref = "0")
 
-### Tukey test
+aov_Mixed_PercDry_Survival_4C <- glht(aov_Mixed_PercDry_Survival_4C, linfct = mcp(Timepoint = "Dunnett"))
+summary(aov_Mixed_PercDry_Survival_4C)
+dunnett_summary <- summary(aov_Mixed_PercDry_Survival_4C)
 
-Tukey_Mixed_PercDry_Survival_4C <- TukeyHSD(aov_Mixed_PercDry_Survival_4C)
-Tukey_Mixed_PercDry_Survival_4C
-Tukey_Mixed_PercDry_Survival_4C <- as.data.frame(Tukey_Mixed_PercDry_Survival_4C$`Timepoint`) %>%
-  rownames_to_column(var = "Comparison") %>%
-  mutate(across(where(is.numeric), ~ sprintf("%.3f", .))) %>%
-  mutate(Treatment = "4 °C") %>%
-  mutate(`p adj` = ifelse(as.numeric(`p adj`) < 0.001, "< 0.001", `p adj`)) %>%
-  dplyr::select(Treatment, Comparison, diff, P = `p adj`)
+Dunnett_Mixed_PercDry_Survival_4C <- data.frame(
+  Treatment = "4 °C",
+  Comparison = names(dunnett_summary$test$coefficients),
+  diff = sprintf("%.3f", dunnett_summary$test$coefficients),
+  P = ifelse(dunnett_summary$test$pvalues < 0.001, "< 0.001",
+             sprintf("%.3f", dunnett_summary$test$pvalues))
+)
 
+Dunnett_Mixed_PercDry_Survival_4C
 
 
 
 
 #### Compile the Anovas ####
 
-Anova_Survival_soil_Treatments <- bind_rows(anova_Mixed_PercDry_Survival_22C, anova_Mixed_PercDry_Survival_32C, anova_Mixed_PercDry_Survival_DroughtC, anova_Mixed_PercDry_Survival_4C)
+
+Anova_Survival_soil_Treatments <- bind_rows(anova_Mixed_PercDry_Survival_32C, anova_Mixed_PercDry_Survival_22C, anova_Mixed_PercDry_Survival_4C, anova_Mixed_PercDry_Survival_DroughtC)
 Anova_Survival_soil_Treatments
 
-write_xlsx(Anova_Survival_soil_Treatments, here("Tables", "EPS_Anova_Survival_soil_Treatments_FromR.xlsx"))
+Anova_Survival_soil_Treatments <- Anova_Survival_soil_Treatments %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`) %>%
+  dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "P")
+Anova_Survival_soil_Treatments
+
+write_xlsx(Anova_Survival_soil_Treatments, here("Phenotype", "Tables", "EPS_Anova_Survival_soil_Treatments_FromR.xlsx"))
 
 
-#### Compile the Tukey tests ####
+#### Compile the Dunnett tests ####
 
-Tukey_Survival_soil <- bind_rows(Tukey_Mixed_PercDry_Survival_22C, Tukey_Mixed_PercDry_Survival_32C,Tukey_Mixed_PercDry_Survival_DroughtC, Tukey_Mixed_PercDry_Survival_4C)
-Tukey_Survival_soil
+dunnett_Survival_all <- rbind(Dunnett_Mixed_PercDry_Survival_32C, Dunnett_Mixed_PercDry_Survival_22C, Dunnett_Mixed_PercDry_Survival_4C, Dunnett_Mixed_PercDry_Survival_Drought)
+dunnett_Survival_all
 
-Tukey_wide_Survival_soil <- Tukey_Survival_soil %>%
-  pivot_wider(
-    names_from = Treatment,
-    values_from = c(diff, P)
-  )
-Tukey_wide_Survival_soil <- Tukey_wide_Survival_soil %>% select(Comparison, `diff_22 °C`, `P_22 °C`, `diff_32 °C`, `P_32 °C`, diff_Drought, P_Drought, `diff_4 °C`, `P_4 °C`)
-Tukey_wide_Survival_soil
 
-write_xlsx(Tukey_wide_Survival_soil, here("Tables", "EPS_Tukey_wide_Survival_soil_FromR.xlsx"))
-
+write_xlsx(dunnett_Survival_all, here("Phenotype", "Tables", "EPS_Survival_Dunnett.xlsx"))
 
 ```
 
@@ -1336,7 +1303,7 @@ Survival_DryPercentage
 
 
 ggsave(Survival_DryPercentage, 
-       filename = here("Figures","EPS_Figure3D_FromR.pdf"), 
+       filename = here("Phenotype", "Figures","EPS_Figure3D_FromR.pdf"), 
        device = "pdf", 
        height = 4, width = 5, units = "in")
 
@@ -1384,7 +1351,7 @@ Growth_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology == "
 Growth_Mucoid
 
 ggsave(Growth_Mucoid, 
-       filename = here("Figures" ,"EPS_FigureMucoidGrowth_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureMucoidGrowth_FromR.pdf"),
        device = "pdf",
        height = 5, width = 9, units = "in")
 
@@ -1425,7 +1392,7 @@ Shift_Mucoid_Dry_Soil_Survival <- ggplot(Survival_Mesocosm_Mucoid_NoIn %>%
 Shift_Mucoid_Dry_Soil_Survival
 
 ggsave(Shift_Mucoid_Dry_Soil_Survival, 
-       filename= here("Figures", "EPS_MucoidShiftSurvival_FromR.pdf"),
+       filename= here("Phenotype", "Figures", "EPS_MucoidShiftSurvival_FromR.pdf"),
        device = "pdf",
        height = 5, width = 6, units = "in")
 
@@ -1462,7 +1429,7 @@ Shift_Mucoid_Dry_Soil_Growth <- ggplot(Growth_Mesocosm_Mucoid_NoIn %>%
 Shift_Mucoid_Dry_Soil_Growth
 
 ggsave(Shift_Mucoid_Dry_Soil_Growth, 
-       filename= here("Figures", "EPS_MucoidShiftGrowth_FromR.pdf"),
+       filename= here("Phenotype", "Figures", "EPS_MucoidShiftGrowth_FromR.pdf"),
        device = "pdf",
        height = 5, width = 6, units = "in")
 
@@ -1508,7 +1475,7 @@ Growth_Survival_DryMucoid <- ggplot(popsize.median_All %>% filter(Population_Mor
 Growth_Survival_DryMucoid
 
 ggsave(Growth_Survival_DryMucoid, 
-       filename = here("Figures" ,"EPS_Growth_Survival_DryMucoid_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_Growth_Survival_DryMucoid_FromR.pdf"),
        device = "pdf",
        height = 5, width = 11, units = "in")
 
@@ -1545,7 +1512,7 @@ Growth_Survival_Dry <- ggplot(popsize.median_All %>% filter(Population_Morpholog
 Growth_Survival_Dry
 
 ggsave(Growth_Survival_Dry, 
-       filename = here("Figures" ,"EPS_FigureS5_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS5_FromR.pdf"),
        device = "pdf",
        height = 5, width = 11, units = "in")
 
@@ -1568,7 +1535,7 @@ Open the files
 
 ### Data that contains the results from the single inoculation experiments that contains plant fitness data (shoot biomass) and nodule number
 
-Host_data <-  read.csv(here("Data_input", "Single_Strain_Experiment_Host.csv"))
+Host_data <-  read.csv(here("Phenotype", "Data_input", "Single_Strain_Experiment_Host.csv"))
 Host_data
 
 
@@ -1578,14 +1545,14 @@ Host_data <- Host_data %>%
   mutate(Nod_number = as.numeric(Nodule_LOBED) + as.numeric(Nodule_UN_Lobed),
          Prop_branched = as.numeric(Nodule_LOBED)/Nod_number)
 
-hist(Host_data$Prop_branched)
+hist(Host_data$Prop_branched) #Shows normal distribution 
 
 
 ####### RHIZOBIA RELATIVE FREQUENCY ######
 
 ### Data coming from the multi-strain inoculation experiments that contains rhizobial strain fitness
 
-Freq_data <-  read.table(here("Data_input", "freq_100_AVT118.tsv"), header = TRUE, sep = "")
+Freq_data <-  read.table(here("Phenotype", "Data_input", "freq_100_AVT118.tsv"), header = TRUE, sep = "")
 
 Freq_data <- Freq_data %>% 
   separate(col = pool, 
@@ -1672,12 +1639,12 @@ meso_fit_ave <- StrainFitness_Plant %>%
 
 meso_fit_ave
 
-Host_ave <- merge(Host_data_ave, meso_fit_ave %>% select(-"Morphology"), by = c("Strain", "Variety"))
+Host_ave <- merge(Host_data_ave, meso_fit_ave %>% dplyr::select(-"Morphology"), by = c("Strain", "Variety"))
 Host_ave
 
 ## Add the Phylogenetically relatedness file (PC1 and PC2) calculated earlier. 
 
-Phylo_inf <- read_csv(here("Tables", "PCA_scores_strains.csv"))
+Phylo_inf <- read_csv(here("Phenotype", "Tables", "PCA_scores_strains.csv"))
 Phylo_inf
 
 ### Merge the per strain average of the Plant Traits, rhizobia relative fitness and the phylotenetic information 
@@ -1685,10 +1652,10 @@ Phylo_inf
 ## Merge Host_data_ave and meso_fit_ave based on Strain_Code and on alfalfa variety 
 
 
-Host_data_ave_all <- merge(Host_ave, Phylo_inf %>% select(-"Morphology"), by = "Strain")
+Host_data_ave_all <- merge(Host_ave, Phylo_inf %>% dplyr::select(-"Morphology"), by = "Strain")
 Host_data_ave_all
 
-write_csv(Host_data_ave_all, here("Tables", "Host_data_ave_all.csv"))
+write_csv(Host_data_ave_all, here("Phenotype", "Tables", "Host_data_ave_all.csv"))
 
 ```
 
@@ -1698,7 +1665,7 @@ write_csv(Host_data_ave_all, here("Tables", "Host_data_ave_all.csv"))
 
 ### Now I will calculate the shoot biomass   
 
-Host_data_ave_all <- read_csv(here("Tables", "Host_data_ave_all.csv"))
+Host_data_ave_all <- read_csv(here("Phenotype", "Tables", "Host_data_ave_all.csv"))
 
 ### Figure: Host biomass ###
 
@@ -1731,7 +1698,7 @@ stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.
 HostBiomass
 
 ggsave(HostBiomass, 
-       filename = here("Figures" ,"EPS_Figure4A_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_Figure4A_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
 
@@ -1757,7 +1724,7 @@ anova_hostbiomass <- anova_hostbiomass %>%
   dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
 anova_hostbiomass
-write_xlsx(anova_hostbiomass, here("Tables", "EPS_anova_hostbiomass_FromR.xlsx"))
+write_xlsx(anova_hostbiomass, here("Phenotype", "Tables", "EPS_anova_hostbiomass_FromR.xlsx"))
 
 ```
 
@@ -1798,7 +1765,7 @@ meso_fit_ggplot
 
 
 ggsave(meso_fit_ggplot, 
-       filename = here("Figures" ,"EPS_Figure4B_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_Figure4B_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
 
@@ -1821,74 +1788,51 @@ anova_RhizobialFitness <- anova_RhizobialFitness %>%
   dplyr::select(Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
 
 anova_RhizobialFitness
-write_xlsx(anova_RhizobialFitness, here("Tables", "EPS_anova_RhizobialFitness_FromR.xlsx"))
+write_xlsx(anova_RhizobialFitness, here("Phenotype", "Tables", "EPS_anova_RhizobialFitness_FromR.xlsx"))
 
 
 ### Subset ###
 
+
 aov_Rfit_O <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "O"))
 summary(aov_Rfit_O)
 anova_Rfit_O <- anova(aov_Rfit_O)
-anova_Rfit_O
+anova_Rfit_O <- rownames_to_column(as.data.frame(anova_Rfit_O), var = "Term") #For table formating
+anova_Rfit_O <- anova_Rfit_O %>% mutate(Variety = "O")
 
 
 aov_Rfit_S <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "S"))
-summary(aov_Rfit_S)
-
 anova_Rfit_S <- anova(aov_Rfit_S)
 anova_Rfit_S  
+anova_Rfit_S <- rownames_to_column(as.data.frame(anova_Rfit_S), var = "Term") #For table formating
+anova_Rfit_S <- anova_Rfit_S %>% mutate(Variety = "S")
+
  
 aov_Rfit_V <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "V"))
-summary(aov_Rfit_V)
-   
 anova_Rfit_V <- anova(aov_Rfit_V)
 anova_Rfit_V
+anova_Rfit_V <- rownames_to_column(as.data.frame(anova_Rfit_V), var = "Term") #For table formating
+anova_Rfit_V <- anova_Rfit_V %>% mutate(Variety = "V")
 
 
 
-## Trying out this analysis: 
+#### Compile the Anovas ####
 
 
-### Based on Sohini's analysis two varieties are able to select for better partners, except Vernal 
-View(Fitness_ave)
+Anova_RhizobialFitness_Varieties <- bind_rows(anova_Rfit_O, anova_Rfit_S, anova_Rfit_V)
+Anova_RhizobialFitness_Varieties
+Anova_RhizobialFitness_Varieties
 
-aov_RhizobialFitness_S <- aov(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "S"))
-summary(aov_RhizobialFitness_S)
-anova(aov_RhizobialFitness_S) # P value is still 0.0834
+Anova_RhizobialFitness_Varieties <- Anova_RhizobialFitness_Varieties %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(-`Mean Sq`, P = `Pr(>F)`) %>%
+  dplyr::select("Variety", "Term", "Df", "Sum Sq", "F value", "P")
 
-aov_RhizobialFitness_O <- aov(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "O"))
-summary(aov_RhizobialFitness_O)
-anova(aov_RhizobialFitness_O) # P value is still 0.0947
+Anova_RhizobialFitness_Varieties
 
-aov_RhizobialFitness_V <- aov(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "V"))
-summary(aov_RhizobialFitness_V)
-anova(aov_RhizobialFitness_V) # P value is still 0.1492
+write_xlsx(Anova_RhizobialFitness_Varieties, here("Phenotype", "Tables", "EPS_Anova_RhizobialFitness_Varieties.xlsx"))
 
-
-
-
-
-
-
-
-### Trying out an analysis including the morphology and plant benefit 
-
-
-aov_try <- aov(Fitness_ave ~ Morphology*Variety, Host_data_all)
-summary(aov_try)
-
-aov_try <- aov(Fitness_ave ~ Morphology*ave_shoot*Variety + PC1 + PC2, Host_data_all)
-summary(aov_try)
-anova <- anova(aov_try) ## Slight significance between Morphology:Variety
-anova
-summary(anova)
-
-meso_fit_ggplot <- ggplot(data = join, aes(x= ave_shoot, y = Fitness_ave, color = Morphology)) +
-  geom_jitter() +
-    geom_smooth(method = "lm", se = TRUE) + 
-    facet_wrap(~Variety.x) 
-
-meso_fit_ggplot
 
 ```
 
@@ -1928,7 +1872,7 @@ Host_NoduleTotal
 
 
 ggsave(Host_NoduleTotal, 
-       filename = here("Figures" ,"EPS_Host_NoduleTotal_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_Host_NoduleTotal_FromR.pdf"),
        device = "pdf",
        height = 3, width = 4, units = "in")
 
@@ -1951,7 +1895,7 @@ anova_aov_hostnodtotal <- anova_aov_hostnodtotal %>%
   dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
 
 anova_aov_hostnodtotal
-write_xlsx(anova_aov_hostnodtotal, here("Tables", "EPS_anova_aov_hostnodtotal_FromR.xlsx"))
+write_xlsx(anova_aov_hostnodtotal, here("Phenotype", "Tables", "EPS_anova_aov_hostnodtotal_FromR.xlsx"))
 
 
 
@@ -1985,7 +1929,7 @@ stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.
 Host_Branching
 
 ggsave(Host_Branching, 
-       filename = here("Figures" ,"EPS_Host_Branching_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_Host_Branching_FromR.pdf"),
        device = "pdf",
        height = 3, width = 4, units = "in")
 
@@ -2006,7 +1950,7 @@ anova_aov_hostBranching <- anova_aov_hostBranching %>%
   dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
 
 anova_aov_hostBranching
-write_xlsx(anova_aov_hostBranching, here("Tables", "EPS_anova_aov_hostBranching_FromR.xlsx"))
+write_xlsx(anova_aov_hostBranching, here("Phenotype", "Tables", "EPS_anova_aov_hostBranching_FromR.xlsx"))
 
 ```
 
@@ -2017,26 +1961,79 @@ This compares pairs of mutants
 
 ```{r}
 
-Dual_inocualtion <- read_csv(here("Data_input", "Dual_inoculation.csv"))
+Dual_inoculation <- read_csv(here("Phenotype", "Data_input", "Dual_inoculation.csv"))
 #View(Dual_inocualtion)
+Dual_inoculation <- Dual_inoculation %>%
+  mutate(Colonies_Dry = as.numeric(Colonies_Dry)) %>%
+  mutate(Colonies_Mucoid = as.numeric(Colonies_Mucoid))
 
-Harvesting_results_RPM <- Dual_inocualtion  %>% filter(Pair %in% c("1", "2", "3", "4")) # Remove control and NA cells
+Dual_inoculation_initial <- Dual_inoculation %>% filter(Growth_Chamber == "Initial")
+#View(Dual_inoculation_initial)
+colnames(Dual_inoculation_initial)
+#View(Dual_inoculation_initial)
+Dual_inoculation_initial_ave <- Dual_inoculation_initial %>%
+  group_by(Name, Morphology) %>%
+  summarise(
+    colonies_ave = case_when(
+      first(Morphology) == "Dry"    ~ mean(Colonies_Dry, na.rm = TRUE),
+      first(Morphology) == "Mucoid" ~ mean(Colonies_Mucoid, na.rm = TRUE),
+      TRUE ~ NA_real_
+    ),
+    .groups = "drop"
+  )
+
+Dual_inoculation_initial_ave
+
+### I will build the proportion within each pair. These are the pairs; 91 - 101, 015 - 099, 016 - 100, and 029 - 098,
+
+
+pair_map <- tibble::tribble(
+  ~Name, ~Pairs,
+  "015", "015_099",
+  "099", "015_099",
+  "029", "029_098",
+  "098", "029_098",
+  "016", "016_100",
+  "100", "016_100",
+  "091", "091_101",
+  "101", "091_101"
+)
+
+Dual_inoculation_initial_pct <- Dual_inoculation_initial_ave %>%
+  left_join(pair_map, by = "Name") %>%
+  dplyr::select(Pairs, Morphology, colonies_ave) %>%
+  pivot_wider(names_from = Morphology, values_from = colonies_ave) %>%
+  mutate(`Percentage of Dry bacteria` = Dry / (Dry + Mucoid) * 100)
+
+Dual_inoculation_initial_pct <- Dual_inoculation_initial_pct %>%
+  rename(Name = Pairs, Percentage_Dry_initial = `Percentage of Dry bacteria`)
+
+
+Harvesting_results_RPM <- Dual_inoculation  %>% filter(!Morphology %in% c("Control", "Initial")) # Remove control and NA cells
 Harvesting_results_RPM <- Harvesting_results_RPM %>%
-  mutate(Pair = as.character(Pair)) %>%
   mutate(Colonies_Dry = as.numeric(Colonies_Dry)) %>%
   mutate(Colonies_Mucoid = as.numeric(Colonies_Mucoid)) %>%
   mutate(Percentage_Dry = (Colonies_Dry/(Colonies_Dry + Colonies_Mucoid)*100)) #One plate per plant
-#View(Harvesting_results_M)
+#View(Harvesting_results_RPM)
 
 Harvesting_results_Dual <- Harvesting_results_RPM %>% filter(Morphology == "Dual")
-View(Harvesting_results_Dual)  
-                     
-Dual_Competition <- ggplot(Harvesting_results_Dual %>% 
-                                         mutate(Pair = factor(Pair, levels = c("1", "2", "3", "4"))),  
-                                         aes(x = Pair, y = Percentage_Dry)) +
+#View(Harvesting_results_Dual)  
+Harvesting_results_Dual                     
+
+Dual_Competition <- ggplot(Harvesting_results_Dual, aes(x = Name, y = Percentage_Dry)) +
   stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
   geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8), fill = "#e0ba3e") +
   geom_jitter(position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.8), size = 2, color = "black") +
+  geom_crossbar(
+    data = Dual_inoculation_initial_pct,
+    aes(x = Name, y = Percentage_Dry_initial,
+        ymin = Percentage_Dry_initial, ymax = Percentage_Dry_initial,
+        color = "Initial"),
+    inherit.aes = FALSE,
+    width = 0.6,
+    linewidth = 1
+  ) +
+  scale_color_manual(name = NULL, values = c("Initial" = "red")) +
   labs(x = "Pairs", y = "Percentage of dry bacteria") +
   theme_classic() +
   theme(
@@ -2047,20 +2044,14 @@ Dual_Competition <- ggplot(Harvesting_results_Dual %>%
     panel.grid       = element_blank(),
     axis.line        = element_line(color = "black"),
     axis.ticks       = element_line(color = "black")
-#    legend.position  = "none"
-)
+  )
 
 Dual_Competition
 
-
 ggsave(Dual_Competition, 
-       filename = here("Figures" ,"EPS_DualCompetition_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_DualCompetition_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
-
-## Statistical tests: 
-
-#lm(Percentage_Dry ~ as.factor(Pair)) 
 
 
 ```
@@ -2100,7 +2091,7 @@ Shift_InPlant <- ggplot(Harvesting_results_Mucoid %>%
 Shift_InPlant
 
 ggsave(Shift_InPlant, 
-       filename = here("Figures" ,"EPS_PercentageMucoidInPlant_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_PercentageMucoidInPlant_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
 
