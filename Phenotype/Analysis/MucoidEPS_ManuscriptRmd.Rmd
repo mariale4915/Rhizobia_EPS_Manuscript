@@ -28,10 +28,10 @@ library(adegenet)
 library(car)
 library(multcomp)
 
-citation("car")
-citation("multcomp")
-citation("lmerTest")
-citation("vcfR")
+#citation("car")
+#citation("multcomp")
+#citation("lmerTest")
+#citation("vcfR")
 
 
 ```
@@ -113,7 +113,7 @@ pca_table_top10 <- pca_table %>% #The proportion of varance is the same than pca
 
 pca_table_top10
 
-write_xlsx(pca_table_top10, here("Phenotype", "Tables", "pca_top10_FromR.xlsx"))
+write_xlsx(pca_table_top10, here("Phenotype", "Tables", "EPS_TableS1_FromR.xlsx"))
 
 pca_table_top10$PC <- factor(pca_table_top10$PC, levels = c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10"))
 
@@ -131,7 +131,7 @@ screeplot <- ggplot(pca_table_top10, aes(x = PC, y = Percent_Variance)) +
 
 screeplot
 
-ggsave(here("Phenotype", "Figures", "EPS_FigureS1_FromR.pdf"), screeplot, width = 4, height = 2.5, units = "in")
+ggsave(here("Phenotype", "Figures", "EPS_FigureS1A_FromR.pdf"), screeplot, width = 4, height = 2.5, units = "in")
 
 # Get the pc_scores
 
@@ -149,7 +149,6 @@ Strain_morphotype <- merge(Strains, pc_scores, by = "Strain_Code")
 Strain_morphotype
 
 ### This file cointains the information about the phylogenetically relatedness, I will store it 
-
 write_csv(Strain_morphotype, here("Phenotype", "Tables", "PCA_scores_strains.csv"))
 
 ### I will merge this data with the morphology data to be able to color them based on "Morphology" 

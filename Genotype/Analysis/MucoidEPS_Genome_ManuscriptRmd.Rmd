@@ -329,7 +329,7 @@ write_tsv(gene_pa_filtered, here("Genotype", "Tables",  "gene_presence_absence_r
 
 This code was run in the batch 
 
-```{r}
+```{r, eval=FALSE}
 
 
 ### Filter the vcf file 
@@ -390,7 +390,7 @@ That is a reasonable next step. If it is not related, presence/absence. How much
 
 Account for population structure
 
-```{r}
+```{r, eval = FALSE}
 
 ### Turn the tree in a similarity matrix using pyseer helper script that can be obtained in pyseer github repository (https://github.com/mgalardini/pyseer). It is currently in this path: /storage/home/mag6678/burghardt/MariaGil/pyseer. I will use the script phylogeny_distance.py  to create the kinship matrix that will be used as a random effect when I run pyseer. I will also create the phylogeny_distance_forglm.tsv, that is a distance matrix that for the glm() where the trait is binary. I am using the file that does not have the outgroups
 
@@ -406,7 +406,7 @@ python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/phylogeny_distanc
 
 # Script to run pyseer #
 
-```{r, include= FALSE}
+```{r, eval=FALSE= FALSE}
 
 conda install bioconda::pyseer
 
@@ -465,7 +465,7 @@ Pyseer will test all the SNPs/genes, and it will simultaneously create pattern.t
 
 Run in the terminal
 
-```{r}
+```{r, eval= FALSE}
 
 python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py patterns_binary_maf05_PA.txt
 
@@ -506,7 +506,7 @@ Here I am trying to take a look at the annotations of the genes nin the presence
 ## Presence/Absence ##
 
 
-```{r}
+#```{r}
 
 ## For exploratory reasons I will conserve the candidates that have higher lrt-pvalue than 10^-3
 
@@ -624,7 +624,7 @@ print(test_result)
 
 ## Presence absence ## With a treshold of 1E-03
 
-```{r}
+#```{r}
 
 
 ######## PRESENCE ABSENCE #########
@@ -756,7 +756,7 @@ write_xlsx(Important_snps, here("Tables", "SNPs_FinalTable.xlsx"))
 
 ### SNPs ###
 
-```{r}
+#```{r}
 
 #Pyseer has skipped the multi-allelic sites
 
@@ -925,7 +925,7 @@ sum(results_check$p_value < 0.05, na.rm = TRUE)
 
 EXTRA 
 
-```{r}
+#```{r}
 ###### THIS WAS FOR SCOARY THAT I AM NO LONGER USING because I am moving to pyseer ######.
 
 # The file that pyseer uses is different
@@ -991,7 +991,7 @@ write.csv(gene_presence_absence_renamed, here("Tables", "gene_presence_absence_r
 
 
 
-```{r}
+#```{r}
 
 ### Presence Absence
 
