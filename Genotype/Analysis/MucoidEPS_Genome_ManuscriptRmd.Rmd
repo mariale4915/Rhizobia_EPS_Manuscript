@@ -24,6 +24,14 @@ library(colorRamps)
 library(colorspace)
 library(here)
 library(colorspace) 
+library(ape)
+library(caper)
+#install.packages("phytools")
+library(phytools)
+#install.packages("geiger")
+library(geiger)
+## Phylogenetic data
+citation("ape")
 
 set.seed(123)
 ```
@@ -48,7 +56,7 @@ Strains ## I will use Morphology and Pairs
 
 meta_tree <- left_join(tip_strains, Strains, by = "Strain_Code") #Making sure none of the tip samples were lost after left_joining with the "Strains" metadata
 
-write_xlsx(meta_tree, here("Tables", "meta_tree.xlsx"))
+write_xlsx(meta_tree, here("Genotype", "Tables", "meta_tree.xlsx"))
 
 ```
 
@@ -80,7 +88,7 @@ Pairs <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotyp
 Pairs <- Pairs %>% filter(!is.na(Pairs))
 
 pairs_wide <- Pairs %>%
-  select(Strain_Code, Morphology, Pairs) %>%
+  dplyr::select(Strain_Code, Morphology, Pairs) %>%
   pivot_wider(names_from = Morphology, values_from = Strain_Code)
 #View(pairs_wide)
 
@@ -119,7 +127,7 @@ hist(mismatch_filtered$SNP_differences)
 
 ## For itols I will only extract the mismatches and pair s
 mismatch_filtered
-mismatch_filtered_subset <- mismatch_filtered %>% select(c("Pairs", "Mucoid", "Dry", "SNP_differences"))
+mismatch_filtered_subset <- mismatch_filtered %>% dplyr::select(c("Pairs", "Mucoid", "Dry", "SNP_differences"))
 mismatch_filtered_subset
 
 SNPs_Pairs <- pivot_longer(mismatch_filtered_subset,
@@ -132,12 +140,127 @@ SNPs_Pairs
 SNPs_Pair_wide <- SNPs_Pairs %>%
   pivot_wider(names_from = Morphology,
               values_from = Strains)
-SNPs_Pair_wide <- SNPs_Pair_wide %>% rename("Mucoid strain" = "Mucoid", 
-                                            "Dry strain" = "Dry") %>%  select(c("Pairs", "Mucoid strain", "Dry strain", "SNP differences"))
+SNPs_Pair_wide
+SNPs_Pair_wide <- SNPs_Pair_wide %>% dplyr::rename("Mucoid strain" = "Mucoid", 
+                                            "Dry strain" = "Dry") %>%  dplyr::select(c("Pairs", "Mucoid strain", "Dry strain", "SNP_differences"))
 
 SNPs_Pair_wide
 
-write_xlsx(SNPs_Pair_wide, here("Genotype", "Tables", "EPS_TableS7_FromR.xlsx"))
+### This file is not using the way I name them, it is using the way they were labeled in Guha et al., 2026. 
+
+write_xlsx(SNPs_Pair_wide, here("Genotype", "Tables", "EPS_TableS6_FromR.xlsx"))
+
+
+```
+Test for phylogenetic independence 
+
+```{r}
+
+# Testing independent origins of the dry phenotype
+
+#I will use phylo.d (caper). tests whether the dry/mucoid phenotype is phylogenetically clumped (D=0, one ancestral origin retained by descent) or randomly scattered across tips (D=1, consistent with independent/convergent origins).
+
+
+# Root the FULL tree (117 strains + 2 outgroup strains) using the outgroups 
+
+full_tree <- read.tree(here("Data_input", "Genome", "AVT_single_copy_core_concat_outgroup.fasta.treefile"))
+full_tree #I am including the file that has three outgroups
+
+#full_tree$tip.label
+
+### From the .Rmd in Guha et al., 2026 I found 
+
+full_tree$tip.label[full_tree$tip.label == "AVT7827695.1"] <- "Sinorhizobium medicae USDA1037"
+full_tree$tip.label[full_tree$tip.label == "AVT6965.1"]    <- "Sinorhizobium meliloti RM1021"
+full_tree$tip.label[full_tree$tip.label == "AVT2197065.1"] <- "Sinorhizobium meliloti USDA1106"
+
+full_tree     
+
+tree2 <- drop.tip(full_tree, "Sinorhizobium medicae USDA1037") #I think she dropped this one because is causing problems when I try to root using the three
+tree_rooted2 <- root(
+  tree2,
+  outgroup = c("Sinorhizobium meliloti RM1021",
+               "Sinorhizobium meliloti USDA1106"),
+  resolve.root = TRUE
+)
+
+# 2. Then I will drop the outgroups, since I have no complete phenotype data for them
+analysis_tree <- drop.tip(tree_rooted2, c("Sinorhizobium meliloti RM1021", "Sinorhizobium meliloti USDA1106"))
+analysis_tree
+
+
+# 3. Resolve any polytomies on the now-pruned, rooted tree
+analysis_tree <- multi2di(analysis_tree)
+analysis_tree
+analysis_tree$edge.length[analysis_tree$edge.length == 0] <- 1e-8
+
+
+
+
+
+pheno <- Strains_pyseer
+pheno
+
+matched <- treedata(analysis_tree, setNames(pheno[["Binary_trait"]], pheno[["samples"]]),
+                     sort = TRUE, warnings = TRUE)
+analysis_tree <- matched$phy
+analysis_tree
+
+pheno_vec <- matched$data[, 1]  # named character vector "Dry"/"Mucoid"
+pheno_vec
+
+cat("Tree has", Ntip(tree), "tips after matching.\n")
+cat("Phenotype counts:\n")
+print(table(pheno_vec))
+
+
+# phylo.d: is the phenotype clumped or scattered on the tree?
+
+# phylo.d needs a data.frame (not just a vector) with a binary 0/1 column, plus a comparative.data object linking that data.frame to the tree.
+
+pheno_df <- data.frame(
+  strain = names(pheno_vec),
+  dry_binary = pheno_vec
+)
+
+pheno_df
+
+is.rooted(analysis_tree)
+is.binary(analysis_tree)
+
+
+comp_data <- comparative.data(
+  phy = tree,
+  data = pheno_df,
+  names.col = "strain",
+  vcv = TRUE
+)
+
+
+
+d_result <- phylo.d(
+  data = comp_data,
+  binvar = dry_binary,
+  permut = 1000
+)
+
+print(d_result)
+
+
+d_summary <- data.frame(
+  N_tips = length(comp_data$phy$tip.label),
+  D_estimate = d_result$DEstimate,
+  P_random_D1 = d_result$Pval1,
+  P_brownian_D0 = d_result$Pval0,
+  Permutations = 1000   # the number you set, not d_result$Permutations
+                         # (that field holds the 1000 simulated null D values,
+                         # not a count -- hardcode the number you specified)
+)
+
+d_summary
+
+write_csv(d_summary, here("Genotype", "Tables", "EPS_TableS4_FromR.csv"))
+
 
 
 ```
@@ -178,7 +301,7 @@ rename_map <- setNames(Strains_panaroo$Strain_panaroo, Strains_panaroo$Strain_Co
 gene_presence_absence_pyseer <- gene_presence_absence_pyseer %>% rename(any_of(rename_map))
 gene_presence_absence_pyseer
 
-write_tsv(gene_presence_absence_pyseer, here("Genotype", "Tables", "gene_presence_absence_rtab_pyseer.tsv"))
+#write_tsv(gene_presence_absence_pyseer, here("Genotype", "Tables", "gene_presence_absence_rtab_pyseer.tsv"))
 
 ## Cut the genes that are present in less than 5% and therefore also more than 95% of the strain collection
 
@@ -269,11 +392,9 @@ Account for population structure
 
 ```{r}
 
-### Turn the tree in a similarity matrix using pyseer helper script that can be obtained in pyseer github repository (https://github.com/mgalardini/pyseer). It is currently in this path: /storage/home/mag6678/burghardt/MariaGil/pyseer. I will use the script phylogeny_distance.py  to create the kinship matrix that will be used as a random effect when I run pyseer. phylogeny_distance.py should extract the pairwise patristic distances (branch length distances between nodes) from a Newick phylogenetic tree. I am using the file that does not have the outgroups
+### Turn the tree in a similarity matrix using pyseer helper script that can be obtained in pyseer github repository (https://github.com/mgalardini/pyseer). It is currently in this path: /storage/home/mag6678/burghardt/MariaGil/pyseer. I will use the script phylogeny_distance.py  to create the kinship matrix that will be used as a random effect when I run pyseer. I will also create the phylogeny_distance_forglm.tsv, that is a distance matrix that for the glm() where the trait is binary. I am using the file that does not have the outgroups
 
-
-
-# I will use a glm() when working with the binary phenotype mucoid and dry. I used the script phylogeny_distance.py and worked with the tree generated in Guha et al., 2026 (does not use the flag -lmm)
+# I will use a glm() when working with the binary phenotype mucoid and dry. I used the script phylogeny_distance.py (do not use the flag -lmm)
 
 python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/phylogeny_distance.py /storage/home/mag6678/burghardt/MariaGil/EPS_genes/panaroo/tree/AVT_single_copy_core_concat.fasta.treefile > phylogeny_distance_forglm.tsv
 
@@ -295,7 +416,7 @@ conda install bioconda::pyseer
 
 pyseer --phenotypes Data_input/Binary_phenotype_pyseer.tsv \
   --pres Data_input/gene_presence_absence_rtab_pyseer_maf05.tsv \
-  --distances phylogeny_distance_forglm.tsv \
+  --distances Data_input/phylogeny_distance_forglm.tsv \
   --max-dimensions 8 \
   --output-patterns patterns_glm_binary_PA.txt \
   > pyseer_results_glm_binary_PA.txt
@@ -311,9 +432,6 @@ pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \
   > pyseer_results_Glucose_maf05_PA.txt
 
 
-#### I got a pushback regarding how have I run my analysis here, and I was suggested to run a generalized linear model. 
-
-
 
 
 #### SNPs ####
@@ -322,7 +440,7 @@ In the binary phenotype in runned a generalized linear model where the populatio
 
 pyseer --phenotypes Data_input/Binary_phenotype_pyseer.tsv \
   --vcf Data_input/strain_118_filtered.recode.vcf.gz \
-  --distances phylogeny_distance_forglm.tsv \
+  --distances Data_input/phylogeny_distance_forglm.tsv \
   --max-dimensions 8 \
   --output-patterns patterns_glm_binary_snps.txt \
   > pyseer_results_glm_binary_snps.txt
@@ -343,13 +461,11 @@ Pyseer will test all the SNPs/genes, and it will simultaneously create pattern.t
 
 ```
 
-
 # Get the corrected-pvalue
 
 Run in the terminal
 
 ```{r}
-
 
 python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py patterns_binary_maf05_PA.txt
 
@@ -358,16 +474,13 @@ python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py
 
 python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py patterns_Glucose_maf05_PA.txt
 
-
 #Patterns:       1122
 #Threshold:      4.46E-05
-
 
 python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py patterns_snps_binary.txt
 
 #Patterns:       4344
 #Threshold:      1.15E-05
-
 
 python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py patterns_snps_glucose.txt
 
@@ -377,6 +490,14 @@ python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py
 
 
 ```
+
+############# EXTRA CODE ##############
+
+Here I am trying to take a look at the annotations of the genes nin the presence absence and the SNP data but none of the candidates was significant for any of the results. If the coauthors or the reviewers request the annotations of the top 10 p-values or something I can come back and use these files to create an extra dataset. 
+
+
+### Import the top 10 to datasets to share ###
+
 
 
 ### Take a look at the genes ###
@@ -396,7 +517,7 @@ gene_presence_absence
 
 #### Using glm 
 
-pyseer_glm_tree <- read_tsv(here("Data_input", "Genome", "pyseer_results_glm_binary_PA.txt")) # the threshold p-value shoudl be 4.39E-05
+pyseer_glm_tree <- read_tsv(here("Data_input", "Genome", "pyseer_results_glm_binary_PA.txt")) # the threshold p-value should be 4.39E-05
 #View(pyseer_glm_tree)
 PA_candidates <- merge(PresenceAbsence_Candidates %>% rename("Gene" = "variant"), gene_presence_absence, by = "Gene")
 candidate_genes <- c("group_7629")
@@ -407,18 +528,6 @@ seq_lookup <- gene_presence_absence %>%
   rename(Strain_panaroo = strain)
 seq_lookup
 
-
-
-
-####
-
-pyseer_results_binary_maff05_PA <- read_tsv(here("Data_input", "Genome", "pyseer_results_binary_maf05_PA.txt"))
-pyseer_results_binary_maff05_PA
-
-binary_maf05_PA <- pyseer_results_binary_maff05_PA %>%
-  filter(`lrt-pvalue` < 4.42E-05) %>% ## I am trying to extract the top one that did cross Bonferroni threshold
-#  filter(`lrt-pvalue` < 1E-03) %>%
-  mutate(Type = "Binary_PA")
 
 binary_maf05_PA
 
@@ -652,13 +761,6 @@ write_xlsx(Important_snps, here("Tables", "SNPs_FinalTable.xlsx"))
 #Pyseer has skipped the multi-allelic sites
 
 pyseer_snps_results_binary <- read_tsv(here("Data_input", "Genome", "pyseer_results_glm_binary_snps.txt"))
-#View(pyseer_snps_results_binary)
-
-pyseer_snps_results_binary <- read_tsv(here("Data_input", "Genome", "pyseer_snp_results_binary.txt")) #This was done lmm so probably need to get rid of this
-
-#View(pyseer_snps_results_binary)
-#Patterns:       4344
-#Threshold:      1.15E-05
 
 binary_SNPs <- pyseer_snps_results_binary %>%
   filter(`lrt-pvalue` < 1E-03) %>%
@@ -713,137 +815,10 @@ write_tsv(snp_positions_import, here("Tables", "SNP_Candidates.bed"), col_names 
 ```
 
 
-Test for phylogenetic independence 
-
-```{r}
-
-# Testing independent origins of the dry phenotype
-#
-# Part 1: phylo.d (caper) -- tests whether the dry/mucoid phenotype is phylogenetically clumped (D=0, one ancestral origin retained by descent) or randomly scattered across tips (D=1, consistent with independent/convergent origins).
-
-library(ape)
-library(caper)
-#install.packages("phytools")
-library(phytools)
-#install.packages("geiger")
-library(geiger)
-## Phylogenetic data
-
-```{r}
-
-# Root the FULL tree (117 strains + 2 outgroup strains) using the outgroups 
-
-full_tree <- read.tree(here("Data_input", "Genome", "AVT_single_copy_core_concat_outgroup.fasta.treefile"))
-full_tree #I am including the file that has three outgroups
-
-#full_tree$tip.label
-
-### From the .Rmd in Guha et al., 2026 I found 
-
-full_tree$tip.label[full_tree$tip.label == "AVT7827695.1"] <- "Sinorhizobium medicae USDA1037"
-full_tree$tip.label[full_tree$tip.label == "AVT6965.1"]    <- "Sinorhizobium meliloti RM1021"
-full_tree$tip.label[full_tree$tip.label == "AVT2197065.1"] <- "Sinorhizobium meliloti USDA1106"
-
-full_tree     
-
-tree2 <- drop.tip(full_tree, "Sinorhizobium medicae USDA1037") #I think she dropped this one because is causing problems when I try to root using the three
-tree_rooted2 <- root(
-  tree2,
-  outgroup = c("Sinorhizobium meliloti RM1021",
-               "Sinorhizobium meliloti USDA1106"),
-  resolve.root = TRUE
-)
-
-# 2. THEN drop the outgroups, since I have no complete phenotype data for them
-analysis_tree <- drop.tip(tree_rooted2, c("Sinorhizobium meliloti RM1021", "Sinorhizobium meliloti USDA1106"))
-analysis_tree
 
 
-# 3. Resolve any polytomies on the now-pruned, rooted tree
-analysis_tree <- multi2di(analysis_tree)
-analysis_tree
-analysis_tree$edge.length[analysis_tree$edge.length == 0] <- 1e-8
-
-
-
-
-#tree <- read.tree(here("Data_input", "Genome", "AVT_single_copy_core_concat.fasta.treefile"))
-#tree
-
-#tree <- midpoint.root(tree) #I am going to root the tree using a midpoint
-#tree <- multi2di(tree) # Resolve any remaining polytomies by randomly splitting them into a series of zero-length bifurcating branches -- this doesn't add any real evolutionary information, it just satisfies the bifurcating requirement
-
-
-pheno <- Strains_pyseer
-pheno
-
-matched <- treedata(analysis_tree, setNames(pheno[["Binary_trait"]], pheno[["samples"]]),
-                     sort = TRUE, warnings = TRUE)
-analysis_tree <- matched$phy
-analysis_tree
-
-pheno_vec <- matched$data[, 1]  # named character vector, e.g. "Dry"/"Mucoid"
-pheno_vec
-
-cat("Tree has", Ntip(tree), "tips after matching.\n")
-cat("Phenotype counts:\n")
-print(table(pheno_vec))
-
-
-## PART 1: phylo.d -- is the phenotype clumped or scattered on the tree?
-
-# phylo.d needs a data.frame (not just a vector) with a binary 0/1 column, plus a comparative.data object linking that data.frame to the tree.
-
-
-pheno_df <- data.frame(
-  strain = names(pheno_vec),
-  dry_binary = pheno_vec
-)
-
-pheno_df
-
-is.rooted(analysis_tree)
-is.binary(analysis_tree)
-
-
-comp_data <- comparative.data(
-  phy = tree,
-  data = pheno_df,
-  names.col = "strain",
-  vcv = TRUE
-)
-
-
-
-d_result <- phylo.d(
-  data = comp_data,
-  binvar = dry_binary,
-  permut = 1000
-)
-
-print(d_result)
-
-
-d_summary <- data.frame(
-  N_tips = length(comp_data$phy$tip.label),
-  D_estimate = d_result$DEstimate,
-  P_random_D1 = d_result$Pval1,
-  P_brownian_D0 = d_result$Pval0,
-  Permutations = 1000   # the number you set, not d_result$Permutations
-                         # (that field holds the 1000 simulated null D values,
-                         # not a count -- hardcode the number you specified)
-)
-
-d_summary
-
-write.csv(d_summary, "phylo_d_supplementary_table.csv", row.names = FALSE)
-
-
-
-```
-
-
-```{r}
+######## EXTRA CODE ########
+#```{r}
 
 
 
@@ -944,32 +919,6 @@ pa_long <- pa %>%
 
 
 sum(results_check$p_value < 0.05, na.rm = TRUE)
-
-```
-
-
-
-
-Assessing the phylogenetic signal
-
-```{r}
-#install.packages("caper")
-library(caper)
-
-## Convert dry and mucoid in 0/1
-
-meta_tree <- meta_tree %>%
-  mutate(Dry_binary = if_else(Morphology == "Dry", 1, 0))
-
-comp_data <- comparative.data(phy = tree,
-                                data = meta_tree,
-                                names.col = "Strain_Code",
-                                vcv = TRUE)
-
-d_result <- phylo.d(comp_data, binvar = Dry_binary)  # Dry_binary should be 0/1
-print(d_result)
-plot(d_result)
-
 
 ```
 
@@ -1171,138 +1120,3 @@ glucose_snp_split
 #Threshold:      1.14E-05
 
 #The SNP values have the name like pSymB_563027_GT_G, replicon = pSymB, position = 563,027, reference allele = GT, alternate allele = G
-
-
-
-### Create the files for itols
-
-```{r}
-
-
-#library(tidyverse)
-
-mucoid_color <- "#4eadb9"   
-dry_color    <- "#e0ba3e"   
-
-itol_range <- meta_tree %>%
-  select(Strain_Code, Morphology) %>%
-  mutate(
-    color = if_else(Morphology == "Mucoid", mucoid_color, dry_color)
-  ) %>%
-  transmute(
-    node1 = Strain_Code,
-    node2 = Strain_Code,
-    color = color,
-    label = Morphology
-  )
-
-header <- c(
-  "DATASET_RANGE",
-  "SEPARATOR TAB",
-  "DATASET_LABEL\tMorphology_range",
-  "COLOR\t#f4e28c",
-  "",
-  "DATA"
-)
-
-
-writeLines(header, here("Tables", "itol_annotations", "morphology_range.txt"))
-
-write_tsv(itol_range, here("Tables", "itol_annotations", "morphology_range.txt"), col_names = FALSE, append = TRUE)
-
-
-
-```
-
-```{r}
-
-dir.create(here("Tables", "itol_annotations"), showWarnings = FALSE, recursive = TRUE)
-
-# FILE 1: labels.txt  
-
-## The labels are in the format 001, 002, 003... 
-
-labels <- data.frame(
-  tip = meta_tree$Strain_Code,
-  new_label = meta_tree$Strain
-)
-labels <- labels[!is.na(labels$tip) & !is.na(labels$new_label), ]
-labels
-
-
-cat("LABELS\nSEPARATOR TAB\n\nDATA\n",
-    file = here("Tables", "itol_annotations", "labels.txt"))
-
-write.table(labels, here("Tables", "itol_annotations", "labels.txt"),
-            sep = "\t", append = TRUE, row.names = FALSE,
-            col.names = FALSE, quote = FALSE)
-
-
-## Morphology
-
-# FILE 2: morphology_colorstrip.txt
-
-# Edit these two colors to change Morphology appearance
-morph_colors <- c("Mucoid" = "#4eadb9", "Dry" = "#e0ba3e")
-  
-morphology <- data.frame(
-    tip   = meta_tree$Strain,
-    color = morph_colors[as.character(meta_tree$Morphology)],
-    label = meta_tree$Morphology
-  )
-
-morphology <- morphology[!is.na(morphology$color), ]
-morphology
-
-cat(
-    "DATASET_COLORSTRIP\n",
-    "SEPARATOR TAB\n",
-    "DATASET_LABEL\tMorphology\n",
-    "COLOR\t#000000\n",
-    "STRIP_WIDTH\t25\n",
-    "LEGEND_TITLE\tMorphology\n",
-    "LEGEND_SHAPES\t1\t1\n",
-    "LEGEND_COLORS\t", morph_colors["Mucoid"], "\t", morph_colors["Dry"], "\n",
-    "LEGEND_LABELS\tMucoid\tDry\n",
-    "\nDATA\n",
-    sep = "",
-    file = here("Tables", "itol_annotations", "morphology_colorstrip.txt")
-  )
-write.table(morphology, here("Tables", "itol_annotations", "morphology_colorstrip.txt"),
-              sep = "\t", append = TRUE, row.names = FALSE,
-              col.names = FALSE, quote = FALSE)
-
-
-# FILE 3: pairs_colorstrip.txt   (colored boxes + pair numbers)
-
-# One color per pair; use rainbow() so many pairs stay distinguishable
-pair_ids    <- sort(unique(na.omit(as.character(meta_tree$Pairs))))
-pair_colors <- setNames(rainbow(length(pair_ids)), pair_ids)
-
-pairs <- data.frame(
-  tip   = meta_tree$Strain,
-  color = pair_colors[as.character(meta_tree$Pairs)],
-  label = meta_tree$Pairs
-)
-pairs <- pairs[!is.na(pairs$color), ]
-
-cat(
-  "DATASET_COLORSTRIP\n",
-  "SEPARATOR TAB\n",
-  "DATASET_LABEL\tPairs\n",
-  "COLOR\t#000000\n",
-  "STRIP_WIDTH\t40\n",
-  "SHOW_STRIP_LABELS\t1\n",
-  "STRIP_LABEL_SIZE_FACTOR\t0.9\n",
-  "STRIP_LABEL_OUTLINE\t0.5\n",
-  "\nDATA\n",
-  sep = "",
-  file = here("Tables", "itol_annotations", "pairs_colorstrip.txt")
-)
-write.table(pairs, here("Tables", "itol_annotations", "pairs_colorstrip.txt"),
-            sep = "\t", append = TRUE, row.names = FALSE,
-            col.names = FALSE, quote = FALSE)
-
-
-```
-

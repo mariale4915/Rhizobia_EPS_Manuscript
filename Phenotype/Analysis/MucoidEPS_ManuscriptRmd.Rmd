@@ -33,6 +33,7 @@ citation("multcomp")
 citation("lmerTest")
 citation("vcfR")
 
+
 ```
 
 #### Setting up the color pallette ####
@@ -130,7 +131,7 @@ screeplot <- ggplot(pca_table_top10, aes(x = PC, y = Percent_Variance)) +
 
 screeplot
 
-ggsave(here("Phenotype", "Figures", "screeplot.pdf"), screeplot, width = 4, height = 2.5, units = "in")
+ggsave(here("Phenotype", "Figures", "EPS_FigureS1_FromR.pdf"), screeplot, width = 4, height = 2.5, units = "in")
 
 # Get the pc_scores
 
@@ -167,7 +168,7 @@ PCA <- ggplot(merge(Strains, pc_scores, by = "Strain_Code"), aes(x = PC1, y = PC
   theme_bw()
 PCA
 
-ggsave(plot = PCA, here("Phenotype", "Figures", "PCA.pdf"),
+ggsave(plot = PCA, here("Phenotype", "Figures", "EPS_FigureS1B_FromR.pdf"),
             width = 6, height = 2.5, units = "in")
 
 ```
@@ -180,8 +181,8 @@ We used 4 pairs (each pair is a mucoid a dry strain that were co-isolated togeth
 
 Individual_nodule_data <- read.csv(here("Phenotype", "Data_input", "SingleNodule_Ocurrence_data.csv")) 
 #View(Individual_nodule_data)
-Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology
-
+Individual_nodule_data <- Individual_nodule_data %>% filter(Morphology %in% c("Dry", "Mucoid", "Mixture")) #Remove contaminants and morphologies that did not have a clear morphology. The percentages are therefore calculated with respect of the total nodules where we could extract data
+Individual_nodule_data
 ### Create a table that shows the proportions of each morphology in the nodules 
 
 function_pair <- function(Partner) {c(
@@ -191,6 +192,11 @@ function_pair <- function(Partner) {c(
   sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Dry"))/nrow(Individual_nodule_data %>% filter(Name == Partner))),
   sprintf("%.3f", 100*nrow(Individual_nodule_data %>% filter(Name == Partner & Morphology == "Mixture"))/nrow(Individual_nodule_data %>% filter(Name == Partner))))
 }
+
+#Pair 091_101
+function_pair("091_101")
+
+
 
 Table_mix_percentage <- rbind(function_pair("091_101"), function_pair("015_099"), function_pair("016_100"), function_pair("029_098"))
 Table_mix_percentage <- as.data.frame(Table_mix_percentage)
@@ -208,13 +214,13 @@ write_xlsx(Table_mix_percentage, here("Phenotype" , "Tables", "EPS_TableS2_FromR
 
 
 ## Plot
-
+#View(Individual_nodule_data)
 coocurrence <- ggplot(Individual_nodule_data, 
-       aes(x = Name, 
-           fill = Morphology)) + 
+       aes(x = Name, fill = Morphology)) + 
   geom_bar(position = "fill") +
   scale_fill_manual(values = color_values)+
-  labs(x = "Pair", y = "Proportion")+
+    scale_y_continuous(labels = scales::percent) +
+  labs(x = "Pair", y = "Percentage")+
     theme_classic() +
   theme(
     text             = element_text(family = "Helvetica", color = "black"),
@@ -229,7 +235,7 @@ coocurrence <- ggplot(Individual_nodule_data,
 coocurrence
 
 ggsave(coocurrence, 
-       filename = here("Phenotype", "Figures" ,"EPS_FigureS2_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS2B_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
 
@@ -358,6 +364,8 @@ Pair_Anthrone_complete
 Pair_Anthrone_complete$Pairs <- factor(Pair_Anthrone_complete$Pairs) #Make sure the Pairs are read as characters
 #View(Pair_Anthrone_complete)
 
+#View(Pair_Anthrone_complete)
+
 Pairs_anthrone <- ggplot(Pair_Anthrone_complete, aes(x = Pairs, y = Glucose_OD600, color = Morphology)) +
   geom_jitter() +
   geom_line(aes(group = Pairs)) +
@@ -366,7 +374,7 @@ Pairs_anthrone <- ggplot(Pair_Anthrone_complete, aes(x = Pairs, y = Glucose_OD60
   theme_minimal() +
     labs(
     x = "Pairs",
-    y = "Glucose/OD600") +
+    y = "Normalized Glucose") +
   coord_flip() +
     theme(
     text             = element_text(family = "Helvetica", color = "black"),
@@ -382,7 +390,7 @@ Pairs_anthrone <- ggplot(Pair_Anthrone_complete, aes(x = Pairs, y = Glucose_OD60
 
 Pairs_anthrone
 
-ggsave(Pairs_anthrone, file = here("Phenotype", "Figures", "EPS_FigureS2A_FromR.pdf"), width = 10, height = 10, units = "in")
+ggsave(Pairs_anthrone, file = here("Phenotype", "Figures", "EPS_FigureS3A_FromR.pdf"), width = 10, height = 5, units = "in")
 
 #### Anthrone per pair - Stats ####
 
@@ -442,7 +450,7 @@ random_effects_rows <- data.frame(
 full_table <- bind_rows(fixed_effects, random_effects_rows)
 full_table
  
-write_xlsx(full_table, here("Phenotype", "Tables", "EPS_TableS4_FromR.xlsx"))
+write_xlsx(full_table, here("Phenotype", "Tables", "EPS_TableS3A_FromR.xlsx"))
 
 
 
@@ -497,7 +505,7 @@ anova2_Table <- anova2 %>%
 
 anova2_Table
 
-write_xlsx(anova2_Table, here("Phenotype", "Tables", "EPS_TableS5_FromR.xlsx"))
+write_xlsx(anova2_Table, here("Phenotype", "Tables", "EPS_TableS3B_FromR.xlsx"))
 ```
 
 
@@ -535,7 +543,7 @@ anova <- anova %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>Chisq)` = ifelse(as.numeric(`Pr(>Chisq)`) < 0.001, "< 0.001", `Pr(>Chisq)`))
 
-write_xlsx(anova, here("Phenotype", "Tables", "PopStru_Binomial_FromR.xlsx"))
+write_xlsx(anova, here("Phenotype", "Tables", "EPS_TableS5A_FromR.xlsx"))
 
 
 ### Normalized Glucose ###
@@ -562,7 +570,7 @@ anova <- anova %>%
   dplyr::select(-`Mean Sq`)
 anova
 
-write_xlsx(anova, here("Phenotype", "Tables", "EPS_TableEPS_Phylogeny_FromR.xlsx"))
+write_xlsx(anova, here("Phenotype", "Tables", "EPS_TableS5B_FromR.xlsx"))
 
 
 
@@ -837,19 +845,7 @@ ggsave(Growth_Mixture,
 ```
 
 
-###### Percentage of Dry bacteria ######
-
-```{r}
-
-##Account for the percentage of dry bacteria 
-
-### Make a table
-unique(soil.expanded_ave$Treatment)
-### 32 C
-#View(soil.expanded_ave %>% filter(Condition == "Growth" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
-#View(soil.expanded_ave %>% filter(Condition == "Survival" & Population_Morphology == "Mixture" & Treatment == "32 °C"))
-
-```
+###### Percentage of Dry bacteria-- Growth ######
 
 
 ```{r}
@@ -914,8 +910,8 @@ anova_Mixed_PercDry_Growth <- anova_Mixed_PercDry_Growth %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
   dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
-
-write_xlsx(anova_Mixed_PercDry_Growth, here("Phenotype", "Tables", "EPS_anova_Mixed_PercDry_Growth_FromR.xlsx"))
+anova_Mixed_PercDry_Growth
+write_xlsx(anova_Mixed_PercDry_Growth, here("Phenotype", "Tables", "EPS_TableS7A_FromR.xlsx"))
 
 
 ## I will subset the each treatment and see what timepoints statistically have higher percentage of dry bacteria
@@ -1030,7 +1026,7 @@ Anova_Growth_soil_Treatments <- Anova_Growth_soil_Treatments %>%
   dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "P")
 Anova_Growth_soil_Treatments
 
-write_xlsx(Anova_Growth_soil_Treatments, here("Phenotype", "Tables", "EPS_Anova_Growth_soil_Treatments_FromR.xlsx"))
+write_xlsx(Anova_Growth_soil_Treatments, here("Phenotype", "Tables", "EPS_TableS7B_FromR.xlsx"))
 
 
 #### Compile the Dunnett tests ####
@@ -1038,7 +1034,7 @@ write_xlsx(Anova_Growth_soil_Treatments, here("Phenotype", "Tables", "EPS_Anova_
 dunnett_growth_all <- rbind(Dunnett_Mixed_PercDry_Growth_32C, Dunnett_Mixed_PercDry_Growth_22C, Dunnett_Mixed_PercDry_Growth_drought)
 
 dunnett_growth_all
-write_xlsx(dunnett_growth_all, here("Phenotype", "Tables", "EPS_Growth_Dunnett.xlsx"))
+write_xlsx(dunnett_growth_all, here("Phenotype", "Tables", "EPS_TableS7C_FromR.xlsx"))
 
 
 ```
@@ -1083,9 +1079,11 @@ ggsave(Survival_Mixture,
        filename = here("Phenotype", "Figures" ,"EPS_Figure3B_FromR.pdf"),
        device = "pdf",
        height = 4, width = 5, units = "in")
+```
 
+### Percentage dry in mixtures -- Survival ###
 
-
+```{r}
 ### Statistics
 
 aov_Mixed_PercDry_Survival <- aov(Percentage_Dry_ave ~ Treatment*Timepoint, soil.expanded_ave %>% 
@@ -1102,7 +1100,7 @@ anova_Mixed_PercDry_Survival <- anova_Mixed_PercDry_Survival %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
   dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
-write_xlsx(anova_Mixed_PercDry_Survival, here("Phenotype", "Tables", "EPS_anova_Mixed_PercDry_Survival_FromR.xlsx"))
+write_xlsx(anova_Mixed_PercDry_Survival, here("Phenotype", "Tables", "EPS_TableS8A_FromR.xlsx"))
 
 
 ## I will subset the each treatment and see what timepoints statistically have higher percentage of dry bacteria
@@ -1125,6 +1123,7 @@ anova_Mixed_PercDry_Survival_32C <- anova_Mixed_PercDry_Survival_32C %>% mutate(
 Survival_32C$Timepoint <- relevel(factor(Survival_32C$Timepoint), ref = "0")
 
 aov_Mixed_PercDry_Survival_32C <- glht(aov_Mixed_PercDry_Survival_32C, linfct = mcp(Timepoint = "Dunnett"))
+
 summary(aov_Mixed_PercDry_Survival_32C)
 dunnett_summary <- summary(aov_Mixed_PercDry_Survival_32C)
 
@@ -1248,7 +1247,7 @@ Anova_Survival_soil_Treatments <- Anova_Survival_soil_Treatments %>%
   dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "P")
 Anova_Survival_soil_Treatments
 
-write_xlsx(Anova_Survival_soil_Treatments, here("Phenotype", "Tables", "EPS_Anova_Survival_soil_Treatments_FromR.xlsx"))
+write_xlsx(Anova_Survival_soil_Treatments, here("Phenotype", "Tables", "EPS_TableS8B_FromR.xlsx"))
 
 
 #### Compile the Dunnett tests ####
@@ -1257,7 +1256,7 @@ dunnett_Survival_all <- rbind(Dunnett_Mixed_PercDry_Survival_32C, Dunnett_Mixed_
 dunnett_Survival_all
 
 
-write_xlsx(dunnett_Survival_all, here("Phenotype", "Tables", "EPS_Survival_Dunnett.xlsx"))
+write_xlsx(dunnett_Survival_all, here("Phenotype", "Tables", "EPS_TableS8C_Dunnett.xlsx"))
 
 ```
 
@@ -1322,7 +1321,7 @@ There was a shift from Mucoid to Dry
 ```{r}
 
 
-Growth_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology == "Mucoid"),
+Growth_Survival_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology == "Mucoid"),
        aes(x = Timepoint, y = median,
            color = Treatment,
            linetype = Population_Morphology,
@@ -1351,7 +1350,7 @@ Growth_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology == "
 Growth_Mucoid
 
 ggsave(Growth_Mucoid, 
-       filename = here("Phenotype", "Figures" ,"EPS_FigureMucoidGrowth_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS5AB_FromR.pdf"),
        device = "pdf",
        height = 5, width = 9, units = "in")
 
@@ -1392,7 +1391,7 @@ Shift_Mucoid_Dry_Soil_Survival <- ggplot(Survival_Mesocosm_Mucoid_NoIn %>%
 Shift_Mucoid_Dry_Soil_Survival
 
 ggsave(Shift_Mucoid_Dry_Soil_Survival, 
-       filename= here("Phenotype", "Figures", "EPS_MucoidShiftSurvival_FromR.pdf"),
+       filename= here("Phenotype", "Figures", "EPS_FigureS5D_FromR.pdf"),
        device = "pdf",
        height = 5, width = 6, units = "in")
 
@@ -1429,9 +1428,10 @@ Shift_Mucoid_Dry_Soil_Growth <- ggplot(Growth_Mesocosm_Mucoid_NoIn %>%
 Shift_Mucoid_Dry_Soil_Growth
 
 ggsave(Shift_Mucoid_Dry_Soil_Growth, 
-       filename= here("Phenotype", "Figures", "EPS_MucoidShiftGrowth_FromR.pdf"),
+       filename= here("Phenotype", "Figures", "EPS_FigureS5C_FromR.pdf"),
        device = "pdf",
        height = 5, width = 6, units = "in")
+
 
 ```
 
@@ -1475,7 +1475,7 @@ Growth_Survival_DryMucoid <- ggplot(popsize.median_All %>% filter(Population_Mor
 Growth_Survival_DryMucoid
 
 ggsave(Growth_Survival_DryMucoid, 
-       filename = here("Phenotype", "Figures" ,"EPS_Growth_Survival_DryMucoid_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS4_FromR.pdf"),
        device = "pdf",
        height = 5, width = 11, units = "in")
 
@@ -1724,7 +1724,7 @@ anova_hostbiomass <- anova_hostbiomass %>%
   dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
 
 anova_hostbiomass
-write_xlsx(anova_hostbiomass, here("Phenotype", "Tables", "EPS_anova_hostbiomass_FromR.xlsx"))
+write_xlsx(anova_hostbiomass, here("Phenotype", "Tables", "EPS_TableS10A_FromR.xlsx"))
 
 ```
 
@@ -1788,7 +1788,7 @@ anova_RhizobialFitness <- anova_RhizobialFitness %>%
   dplyr::select(Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
 
 anova_RhizobialFitness
-write_xlsx(anova_RhizobialFitness, here("Phenotype", "Tables", "EPS_anova_RhizobialFitness_FromR.xlsx"))
+write_xlsx(anova_RhizobialFitness, here("Phenotype", "Tables", "EPS_TableS9A_FromR.xlsx"))
 
 
 ### Subset ###
@@ -1831,129 +1831,10 @@ Anova_RhizobialFitness_Varieties <- Anova_RhizobialFitness_Varieties %>%
 
 Anova_RhizobialFitness_Varieties
 
-write_xlsx(Anova_RhizobialFitness_Varieties, here("Phenotype", "Tables", "EPS_Anova_RhizobialFitness_Varieties.xlsx"))
+write_xlsx(Anova_RhizobialFitness_Varieties, here("Phenotype", "Tables", "EPS_TableS9B_FromR.xlsx"))
 
 
 ```
-
-#### Other plant traits ####
-
-```{r}
-#### Nodule number
-
-
-Host_NoduleTotal <- ggplot(data = Host_data_ave_all, aes(x= Morphology, y = ave_nod_total, fill = Morphology)) +
-stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
-  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
-  stat_summary(fun = median, fun.min = median, fun.max = median,
-               geom = "crossbar", width = 0.6,
-               color = "black", linewidth = 0.4,
-               position = position_dodge(width = 0.8)) +
-    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
-        scale_fill_manual(values = color_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Morphology",
-    y = "Total Nodule number"
-  ) +
-  theme(
-    text             = element_text(family = "Helvetica", color = "black"),
-    axis.text        = element_text(size = 10, color = "black"),
-    axis.title.x     = element_text(size = 12, color = "black"),
-    axis.title.y     = element_text(size = 12, color = "black"),
-    panel.grid       = element_blank(),
-    axis.line        = element_line(color = "black"),
-    axis.ticks       = element_line(color = "black"),
-    legend.position  = "none")
-
-Host_NoduleTotal
-
-
-
-ggsave(Host_NoduleTotal, 
-       filename = here("Phenotype", "Figures" ,"EPS_Host_NoduleTotal_FromR.pdf"),
-       device = "pdf",
-       height = 3, width = 4, units = "in")
-
-
-
-aov_hostnodtotal <- lm(ave_nod_total ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
-summary(aov_hostnodtotal)
-anova_aov_hostnodtotal <- anova(aov_hostnodtotal)
-anova_aov_hostnodtotal
-
-anova_aov_hostnodtotal <- rownames_to_column(as.data.frame(anova_aov_hostnodtotal), var = "Term") #For table formating
-anova_aov_hostnodtotal
-
-## Aesthetics
-
-anova_aov_hostnodtotal <- anova_aov_hostnodtotal %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(Trait = "Nodule number") %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
-
-anova_aov_hostnodtotal
-write_xlsx(anova_aov_hostnodtotal, here("Phenotype", "Tables", "EPS_anova_aov_hostnodtotal_FromR.xlsx"))
-
-
-
-#### Branching 
-
-Host_Branching <- ggplot(data = Host_data_ave_all, aes(x= Morphology, y = ave_prop_branched, fill = Morphology)) +
-stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
-  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
-  stat_summary(fun = median, fun.min = median, fun.max = median,
-               geom = "crossbar", width = 0.6,
-               color = "black", linewidth = 0.4,
-               position = position_dodge(width = 0.8)) +
-    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
-        scale_fill_manual(values = color_values) +
-  facet_wrap(~Variety) +
-  theme_classic() +
-  labs(
-    x= "Morphology",
-    y = "Proportion of branched nodules"
-  ) +
-  theme(
-    text             = element_text(family = "Helvetica", color = "black"),
-    axis.text        = element_text(size = 10, color = "black"),
-    axis.title.x     = element_text(size = 12, color = "black"),
-    axis.title.y     = element_text(size = 12, color = "black"),
-    panel.grid       = element_blank(),
-    axis.line        = element_line(color = "black"),
-    axis.ticks       = element_line(color = "black"),
-    legend.position  = "none")
-
-Host_Branching
-
-ggsave(Host_Branching, 
-       filename = here("Phenotype", "Figures" ,"EPS_Host_Branching_FromR.pdf"),
-       device = "pdf",
-       height = 3, width = 4, units = "in")
-
-
-
-aov_hostBranching <- aov(ave_prop_branched ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
-summary(aov_hostBranching)
-anova_aov_hostBranching <- anova(aov_hostBranching)
-anova_aov_hostBranching
-
-anova_aov_hostBranching <- rownames_to_column(as.data.frame(anova_aov_hostBranching), var = "Term") #For table formating
-anova_aov_hostBranching
-
-anova_aov_hostBranching <- anova_aov_hostBranching %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(Trait = "Proportion of Branched nodules") %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
-
-anova_aov_hostBranching
-write_xlsx(anova_aov_hostBranching, here("Phenotype", "Tables", "EPS_anova_aov_hostBranching_FromR.xlsx"))
-
-```
-
 
 ### Dual inoculation experiments ###
 
@@ -2049,7 +1930,7 @@ Dual_Competition <- ggplot(Harvesting_results_Dual, aes(x = Name, y = Percentage
 Dual_Competition
 
 ggsave(Dual_Competition, 
-       filename = here("Phenotype", "Figures" ,"EPS_DualCompetition_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS6_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
 
@@ -2061,7 +1942,7 @@ ggsave(Dual_Competition,
 ```{r}
 
 Harvesting_results_Mucoid <- Harvesting_results_RPM %>% filter(Morphology == "Mucoid")
-View(Harvesting_results_Mucoid)
+#View(Harvesting_results_Mucoid)
 
 
                      
@@ -2091,8 +1972,129 @@ Shift_InPlant <- ggplot(Harvesting_results_Mucoid %>%
 Shift_InPlant
 
 ggsave(Shift_InPlant, 
-       filename = here("Phenotype", "Figures" ,"EPS_PercentageMucoidInPlant_FromR.pdf"),
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS7_FromR.pdf"),
        device = "pdf",
        height = 4, width = 6, units = "in")
 
 ```
+
+
+#### Other plant traits ####
+
+```{r}
+#### Nodule number
+
+
+Host_NoduleTotal <- ggplot(data = Host_data_ave_all, aes(x= Morphology, y = ave_nod_total, fill = Morphology)) +
+stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.6,
+               color = "black", linewidth = 0.4,
+               position = position_dodge(width = 0.8)) +
+    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
+        scale_fill_manual(values = color_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Total Nodule number"
+  ) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 10, color = "black"),
+    axis.title.x     = element_text(size = 12, color = "black"),
+    axis.title.y     = element_text(size = 12, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+Host_NoduleTotal
+
+
+
+ggsave(Host_NoduleTotal, 
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS8A_FromR.pdf"),
+       device = "pdf",
+       height = 3, width = 4, units = "in")
+
+
+
+aov_hostnodtotal <- lm(ave_nod_total ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
+summary(aov_hostnodtotal)
+anova_aov_hostnodtotal <- anova(aov_hostnodtotal)
+anova_aov_hostnodtotal
+
+anova_aov_hostnodtotal <- rownames_to_column(as.data.frame(anova_aov_hostnodtotal), var = "Term") #For table formating
+anova_aov_hostnodtotal
+
+## Aesthetics
+
+anova_aov_hostnodtotal <- anova_aov_hostnodtotal %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(Trait = "Nodule number") %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+
+anova_aov_hostnodtotal
+write_xlsx(anova_aov_hostnodtotal, here("Phenotype", "Tables", "EPS_TableS10B_FromR.xlsx"))
+
+
+
+#### Branching 
+
+Host_Branching <- ggplot(data = Host_data_ave_all, aes(x= Morphology, y = ave_prop_branched, fill = Morphology)) +
+stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.8)) +
+  geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8)) +
+  stat_summary(fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.6,
+               color = "black", linewidth = 0.4,
+               position = position_dodge(width = 0.8)) +
+    geom_quasirandom(size = 1.2, color = "black", width = 0.25, alpha = 0.8) +
+        scale_fill_manual(values = color_values) +
+  facet_wrap(~Variety) +
+  theme_classic() +
+  labs(
+    x= "Morphology",
+    y = "Proportion of branched nodules"
+  ) +
+  theme(
+    text             = element_text(family = "Helvetica", color = "black"),
+    axis.text        = element_text(size = 10, color = "black"),
+    axis.title.x     = element_text(size = 12, color = "black"),
+    axis.title.y     = element_text(size = 12, color = "black"),
+    panel.grid       = element_blank(),
+    axis.line        = element_line(color = "black"),
+    axis.ticks       = element_line(color = "black"),
+    legend.position  = "none")
+
+Host_Branching
+
+ggsave(Host_Branching, 
+       filename = here("Phenotype", "Figures" ,"EPS_FigureS8B_FromR.pdf"),
+       device = "pdf",
+       height = 3, width = 4, units = "in")
+
+
+
+aov_hostBranching <- aov(ave_prop_branched ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
+summary(aov_hostBranching)
+anova_aov_hostBranching <- anova(aov_hostBranching)
+anova_aov_hostBranching
+
+anova_aov_hostBranching <- rownames_to_column(as.data.frame(anova_aov_hostBranching), var = "Term") #For table formating
+anova_aov_hostBranching
+
+anova_aov_hostBranching <- anova_aov_hostBranching %>%
+  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+  mutate(Trait = "Proportion of Branched nodules") %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
+  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+
+anova_aov_hostBranching
+write_xlsx(anova_aov_hostBranching, here("Phenotype", "Tables", "EPS_TableS10C_FromR.xlsx"))
+
+```
+
+
