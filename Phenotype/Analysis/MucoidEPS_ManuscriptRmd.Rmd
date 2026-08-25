@@ -350,9 +350,9 @@ write_csv(Anthrone_mean, here("Phenotype", "Tables", "Anthrone_mean.csv"))
 ```{r}
 
 Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx"))
+Strains
 
-
-Strain_used_pair <- Strains %>% filter(!is.na(Pairs)) %>% select(-"Morphology") ## Subset the strains that have a pair for this analysis and filter out Morphology column so it doesn't get duplicated when we do the "Anthrone_complete"
+Strain_used_pair <- Strains %>% filter(!is.na(Pairs)) %>% dplyr::select(-"Morphology") ## Subset the strains that have a pair for this analysis and filter out Morphology column so it doesn't get duplicated when we do the "Anthrone_complete"
 Strain_used_pair
 
 ### Merge the dataframe with the Anthrone data
@@ -551,7 +551,7 @@ write_xlsx(anova, here("Phenotype", "Tables", "EPS_TableS5A_FromR.xlsx"))
 Anthrone_mean <- read_csv(here("Phenotype", "Tables", "Anthrone_mean.csv"))
 Anthrone_mean
 
-Anthrone_phylo_ave <- merge(Anthrone_mean %>% select(-"Morphology"), Strain_morphotype, by = "Strain")
+Anthrone_phylo_ave <- merge(Anthrone_mean %>% dplyr::select(-"Morphology"), Strain_morphotype, by = "Strain")
 Anthrone_phylo_ave
 
 model <- lm(Glucose_OD600_ave ~ PC1 + PC2, data = Anthrone_phylo_ave)
@@ -929,6 +929,8 @@ anova_Mixed_PercDry_Growth_32C <- anova_Mixed_PercDry_Growth_32C %>% mutate(Trea
 
 Growth_32$Timepoint <- relevel(factor(Growth_32$Timepoint), ref = "0")
 
+aov_Mixed_PercDry_Growth_32C <- aov(Percentage_Dry_ave ~ Timepoint, Growth_32) 
+
 dunnett_Mixed_PercDry_Growth_32C <- glht(aov_Mixed_PercDry_Growth_32C, linfct = mcp(Timepoint = "Dunnett"))
 summary(dunnett_Mixed_PercDry_Growth_32C)
 dunnett_summary <- summary(dunnett_Mixed_PercDry_Growth_32C)
@@ -962,6 +964,8 @@ anova_Mixed_PercDry_Growth_22C
 
 Growth_22$Timepoint <- relevel(factor(Growth_22$Timepoint), ref = "0")
 
+aov_Mixed_PercDry_Growth_22C <- aov(Percentage_Dry_ave ~ Timepoint, Growth_22) 
+
 dunnett_Mixed_PercDry_Growth_22C <- glht(aov_Mixed_PercDry_Growth_22C, linfct = mcp(Timepoint = "Dunnett"))
 summary(dunnett_Mixed_PercDry_Growth_22C)
 dunnett_summary <- summary(dunnett_Mixed_PercDry_Growth_22C)
@@ -994,6 +998,8 @@ anova_Mixed_PercDry_Growth_DroughtC <- anova_Mixed_PercDry_Growth_DroughtC %>% m
 ### Dunnett test
 
 Growth_drought$Timepoint <- relevel(factor(Growth_drought$Timepoint), ref = "0")
+
+aov_Mixed_PercDry_Growth_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, Growth_drought) 
 
 dunnett_Mixed_PercDry_Growth_drought <- glht(aov_Mixed_PercDry_Growth_DroughtC, linfct = mcp(Timepoint = "Dunnett"))
 summary(dunnett_Mixed_PercDry_Growth_drought)
@@ -1121,6 +1127,8 @@ anova_Mixed_PercDry_Survival_32C <- anova_Mixed_PercDry_Survival_32C %>% mutate(
 
 Survival_32C$Timepoint <- relevel(factor(Survival_32C$Timepoint), ref = "0")
 
+aov_Mixed_PercDry_Survival_32C <- aov(Percentage_Dry_ave ~ Timepoint, Survival_32C) 
+
 aov_Mixed_PercDry_Survival_32C <- glht(aov_Mixed_PercDry_Survival_32C, linfct = mcp(Timepoint = "Dunnett"))
 
 summary(aov_Mixed_PercDry_Survival_32C)
@@ -1154,6 +1162,8 @@ anova_Mixed_PercDry_Survival_22C <- anova_Mixed_PercDry_Survival_22C %>% mutate(
 
 Survival_22C$Timepoint <- relevel(factor(Survival_22C$Timepoint), ref = "0")
 
+aov_Mixed_PercDry_Survival_22C <- aov(Percentage_Dry_ave ~ Timepoint, Survival_22C) 
+
 aov_Mixed_PercDry_Survival_22C <- glht(aov_Mixed_PercDry_Survival_22C, linfct = mcp(Timepoint = "Dunnett"))
 summary(aov_Mixed_PercDry_Survival_22C)
 dunnett_summary <- summary(aov_Mixed_PercDry_Survival_22C)
@@ -1186,6 +1196,8 @@ anova_Mixed_PercDry_Survival_DroughtC <- anova_Mixed_PercDry_Survival_DroughtC %
 
 Survival_Drought$Timepoint <- relevel(factor(Survival_Drought$Timepoint), ref = "0")
 
+aov_Mixed_PercDry_Survival_DroughtC <- aov(Percentage_Dry_ave ~ Timepoint, Survival_Drought) 
+
 aov_Mixed_PercDry_Survival_DroughtC <- glht(aov_Mixed_PercDry_Survival_DroughtC, linfct = mcp(Timepoint = "Dunnett"))
 summary(aov_Mixed_PercDry_Survival_DroughtC)
 dunnett_summary <- summary(aov_Mixed_PercDry_Survival_DroughtC)
@@ -1215,6 +1227,8 @@ anova_Mixed_PercDry_Survival_4C <- anova_Mixed_PercDry_Survival_4C %>% mutate(Tr
 ### Dunnett test
 
 Survival_4C$Timepoint <- relevel(factor(Survival_4C$Timepoint), ref = "0")
+
+aov_Mixed_PercDry_Survival_4C <- aov(Percentage_Dry_ave ~ Timepoint, Survival_4C) 
 
 aov_Mixed_PercDry_Survival_4C <- glht(aov_Mixed_PercDry_Survival_4C, linfct = mcp(Timepoint = "Dunnett"))
 summary(aov_Mixed_PercDry_Survival_4C)
@@ -1940,15 +1954,14 @@ ggsave(Dual_Competition,
 
 ```{r}
 
-Harvesting_results_Mucoid <- Harvesting_results_RPM %>% filter(Morphology == "Mucoid")
-#View(Harvesting_results_Mucoid)
+Harvesting_results_Mucoid <- Harvesting_results_RPM %>% filter(Morphology == "Mucoid" & Growth_Chamber != "Initial")
+View(Harvesting_results_Mucoid)
 
 
                      
 Shift_InPlant <- ggplot(Harvesting_results_Mucoid %>% 
-                           mutate(Pair = factor(Pair, levels = c("1", "2", "3", "4")),
-                                  Highlight = if_else(Percentage_Dry > 0, "red_dot", "normal")),
-                         aes(x = Pair, y = Percentage_Dry)) +
+                           mutate(Highlight = if_else(Percentage_Dry > 0, "red_dot", "normal")),
+                         aes(x = Name, y = Percentage_Dry)) +
   stat_boxplot(geom = "errorbar", width = 0.3, color = "black", position = position_dodge(width = 0.8)) +
   geom_boxplot(outlier.shape = NA, position = position_dodge(width = 0.8), fill = "#e0ba3e") +
   geom_jitter(aes(color = Highlight),
