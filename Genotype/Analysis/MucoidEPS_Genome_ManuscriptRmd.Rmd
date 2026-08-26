@@ -32,6 +32,7 @@ library(phytools)
 library(geiger)
 ## Phylogenetic data
 citation("ape")
+citation("caper")
 
 set.seed(123)
 ```
