@@ -59,33 +59,33 @@ We have 117 strains in our collection. As explalined in Guha et al., 2026, we cr
 
 ## Doing a PCA with the SNP variants
 
-I will open Sohini's recent vcf file created with the alignment to reference genome 118. This is the link: <https://github.com/sohini5981/AVT_SS/tree/main/Data> and the name of the file is strain_118_variants.vcf.zip
+I am working with Sohini's recent vcf file created with the alignment to reference genome 118. This is the link: <https://github.com/sohini5981/AVT_SS/tree/main/Data> and the name of the file is strain_118_variants.vcf.zip
 
 ```{r}
 
 vcf <- read.vcfR(here("Genotype", "Data_input", "strain_118_variants.vcf"))
 
 gt_reference <- extract.gt(vcf, element = "GT") ## 0 and 1
-gt_reference
+#gt_reference
 
 gt_numeric <- apply(gt_reference, 2, as.numeric) #"2" tells R to look at the data by columns, and "as.numeric" changes the text to other values into numbers
-gt_numeric
+#gt_numeric
 
 rownames(gt_numeric) <- rownames(gt_reference) #Putting the names back
-gt_numeric
+#gt_numeric
 
 ## PCA needs one row per strain (observation), one column per SNP (variable). The current matrix is the other way around, so I will transpose it. 
 
 gt_matrix <- t(gt_numeric)
 
-head(gt_matrix)
+#head(gt_matrix)
 
 dim(gt_matrix) ## It shows 117 and 1356566. # 
 sum(is.na(gt_matrix)) #there are 762479 missing values ## handle the NAs because prcomp() can not handle NAs
 
 
 complete_snps <- colSums(is.na(gt_matrix)) == 0 ## Returns TRUE for columns that have zero missing values, this is a way to filter and keep only the complete columns
-complete_snps
+#complete_snps
 gt_matrix <- gt_matrix[,complete_snps] ## Here I am retaining only the columns that do not have any missing data. 
 dim(gt_matrix) # 117 and 96206
 
@@ -94,14 +94,11 @@ dim(gt_matrix) # 117 and 96206
 ### Run the PCA ###
 
 pca_result <- prcomp(gt_matrix, center = TRUE, scale. = FALSE) 
-summary(pca_result)
 
 pca_summary <- summary(pca_result)$importance
 pca_summary
 
-
-colnames(pca_summary)
-
+round(pca_summary["Proportion of Variance", ]*100,2)[1]
 
 pca_table <- data.frame(
   PC = colnames(pca_summary),
@@ -136,14 +133,18 @@ ggsave(here("Phenotype", "Figures", "EPS_FigureS1A_FromR.pdf"), screeplot, width
 # Get the pc_scores
 
 ## I will use the pc_scores
-pca_result$x
 
 pc_scores <- as.data.frame(pca_result$x)
 
 pc_scores <- rownames_to_column(pc_scores, var = "Strain_Code")
 pc_scores #PC1 and PC2 will be incorporated as fixed-effect variables in statistical models that indicate this
 
+### I will merge this data with the morphology data to be able to color them based on "Morphology" 
 
+Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx"))
+Strains
+
+### Merge 
 
 Strain_morphotype <- merge(Strains, pc_scores, by = "Strain_Code")
 Strain_morphotype
@@ -151,19 +152,18 @@ Strain_morphotype
 ### This file cointains the information about the phylogenetically relatedness, I will store it 
 write_csv(Strain_morphotype, here("Phenotype", "Tables", "PCA_scores_strains.csv"))
 
-### I will merge this data with the morphology data to be able to color them based on "Morphology" 
 
-Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx"))
-Strains
 
 ## Plot
+var_explained <- (pca_result$sdev^2) / sum(pca_result$sdev^2)
+var_explained
 
 PCA <- ggplot(merge(Strains, pc_scores, by = "Strain_Code"), aes(x = PC1, y = PC2, color = Morphology)) + 
   geom_point(size = 2) +
   scale_color_manual(values = c("Mucoid" = "#4eadb9",
                   "Dry" = "#e0ba3e")) +
-  xlab(paste0("PC1 (", round(var_explained[1], 1), "%)")) + #42.6
-  ylab(paste0("PC2 (", round(var_explained[2], 1), "%)")) + #17.6
+  xlab(paste0("PC1 (", round(pca_summary["Proportion of Variance", ]*100,2)[1], "%)")) + #42.6
+  ylab(paste0("PC2 (", round(pca_summary["Proportion of Variance", ]*100,2)[2], "%)")) + #17.6
   theme_bw()
 PCA
 
@@ -299,7 +299,6 @@ OD620_strains <- Anthrone620_strains %>%
 
 Oct2025_AnthroneOD600 <- read_excel(here("Phenotype", "Data_input", "AnthroneOD600.xlsx"))
 
-### Ask Niroshan whether it is important to calculate the biomass data to get absolute values. 
 
 Anthrone600 <- Oct2025_AnthroneOD600 %>%
   mutate(OD600_Adj = OD600 - mean(OD600[Name == "Blank"], na.rm = TRUE))
@@ -393,7 +392,10 @@ ggsave(Pairs_anthrone, file = here("Phenotype", "Figures", "EPS_FigureS3A_FromR.
 
 #### Anthrone per pair - Stats ####
 
-model1_raw <- lmerTest::lmer(Glucose_OD600 ~ Morphology + (1|Pairs), data = Pair_Anthrone_complete)
+Pair_Anthrone_mean <- left_join(Strain_used_pair, Anthrone_mean, by = "Strain")
+Pair_Anthrone_mean
+
+model1_raw <- lmerTest::lmer(Glucose_OD600_ave ~ Morphology + (1|Pairs), data = Pair_Anthrone_mean)
 
 summary(model1_raw)
 summary(model1_raw)$coefficients
@@ -462,10 +464,6 @@ We will first determine the effect of morphotype and phylogenetic relatedness am
 
 ```{r}
 
-### Using normalized glucose (OD620/OD600)
-
-Pair_Anthrone_mean <- left_join(Strain_used_pair, Anthrone_mean, by = "Strain")
-Pair_Anthrone_mean
 
 Histo_balls <- ggplot(Anthrone_mean, aes(x = Glucose_OD600_ave)) +
   geom_dotplot(aes(fill = Morphology)) +
@@ -487,7 +485,7 @@ Histo_balls <- ggplot(Anthrone_mean, aes(x = Glucose_OD600_ave)) +
 Histo_balls
 
 
-ggsave(Histo_balls, file = here("Phenotype", "Figures", "EPS_FigureS2B_FromR.pdf"), width = 10, height = 10, units = "in")
+ggsave(Histo_balls, file = here("Phenotype", "Figures", "EPS_FigureS3B_FromR.pdf"), width = 10, height = 10, units = "in")
 
 #### Anthrone - whole collection - stats ####
 
@@ -536,7 +534,6 @@ anova <- Anova(model, type = "II", test.statistic = "LR")
 anova
 anova <- rownames_to_column(as.data.frame(anova), var = "Term")
 anova
-1 - (model$deviance / model$null.deviance)   # McFadden's pseudo-R2 is 0.03306622
 
 anova <- anova %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
@@ -586,10 +583,10 @@ write_xlsx(anova, here("Phenotype", "Tables", "EPS_TableS5B_FromR.xlsx"))
 Open files
 
 ```{r}
-
 soil_data <- read_excel(here("Phenotype", "Data_input", "Soil_Survival&Growth.xlsx"))
+
 #View(soil_data)
-soil_data <- soil_data %>% filter(!is.na(Volume_ul)) #Filtering out the ones that were not assessed
+#View(soil_data)
 soil_data <- soil_data %>% filter(Rep_tube != "s") #Filtering out the "sacrificed" plants
 
 
@@ -598,6 +595,9 @@ soil_data$Colonies_Mucoid <- as.numeric(soil_data$Colonies_Mucoid)
 soil_data$Dilution <- as.numeric(soil_data$Dilution)
 soil_data$Volume_ul <- as.numeric(soil_data$Volume_ul)
 
+soil_data <- soil_data %>% filter(!is.na(Volume_ul)) #Filtering out the ones that were not assessed
+#View(soil_data)
+
 ## Calculate CFUs
 
 soil_data <- soil_data %>%
@@ -605,10 +605,12 @@ soil_data <- soil_data %>%
     Dry_CFU_Total = Colonies_Dry*10^5*10^(Dilution -1)/Volume_ul,
     Mucoid_CFU_Total = Colonies_Mucoid*10^5*10^(Dilution -1)/Volume_ul,
     Total_CFU = Dry_CFU_Total + Mucoid_CFU_Total,
-    Percentage_Dry = Dry_CFU_Total*100/Total_CFU
+    Percentage_Dry = Colonies_Dry*100/(Colonies_Dry + Colonies_Mucoid)
   )
 
-hist(soil_data$Percentage_Dry)
+### Remove the ones that had a Total_CFU of 0
+
+soil_data <- soil_data %>% filter((Colonies_Dry + Colonies_Mucoid) != "0")
 
 #View(soil_data)
 
@@ -727,6 +729,8 @@ Growth_Mesocosm.expanded <- rbind(Growth_Mesocoms_Mucoid.expanded, Growth_Mesoco
 ## Now merge survival and growth 
 
 soil.expanded <- rbind(Growth_Mesocosm.expanded, Survival_Mesocosm.expanded)
+#View(soil.expanded)
+
 
 
 ### Now calculate the average of the expanded data ###
@@ -742,56 +746,21 @@ soil.expanded_ave <- soil.expanded %>% ## Calculating the averages
     Log10Total_ave = mean(Log10Total, na.rm = TRUE),
     .groups = "drop"
   )
-soil.expanded_ave
+#View(soil.expanded_ave)
 
+### I will construct the files for the population size analysis using the soil.expanded_ave values so I work with the means ###
 
- 
-### Constructing the files for the Population size analysis ###
+growth_levels   <- c("0", "7 days", "14 days", "21 days", "42 days")
+survival_levels <- c("0", "3 months", "6 months", "12 months")
 
-#### Survival ####
-
-popsize.median_Survival <- Survival_Mesocosm.expanded %>% 
-  group_by(Timepoint, Treatment, Population_Morphology) %>% 
-  summarise(
-    median = median(Log10Total, na.rm = TRUE),
-    min    = min(Log10Total, na.rm = TRUE),
-    max    = max(Log10Total, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-popsize.median_Survival
-
-popsize.median_Survival <- popsize.median_Survival %>%
-  mutate(
-    Condition  = "Survival",
-    Timepoint  = factor(Timepoint,
-                        levels = c("0", "3 months", "6 months", "12 months"))  
-  )
-
-#### Growth ####
-
-
-popsize.median_Growth<- Growth_Mesocosm.expanded %>%
-  group_by(Timepoint, Treatment, Population_Morphology) %>% 
-  summarise(
-    median = median(Log10Total, na.rm = TRUE),
-    min    = min(Log10Total, na.rm = TRUE),
-    max    = max(Log10Total, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-popsize.median_Growth <- popsize.median_Growth %>%
-  mutate(
-    Condition  = "Growth",
-    Timepoint  = factor(Timepoint,
-                        levels = c("0", "7 days", "14 days", "21 days", "42 days"))  
-  )
-
-## I will put together the data for the population size for both Growth and Survival: 
-
-popsize.median_All <- dplyr::bind_rows(popsize.median_Survival,
-                                       popsize.median_Growth)
-
+popsize_tube <- soil.expanded_ave %>%
+  group_by(Condition, Timepoint, Treatment, Population_Morphology) %>%
+  summarise(median  = median(Log10Total_ave),
+            min     = min(Log10Total_ave),
+            max     = max(Log10Total_ave),
+            n_tubes = n(),
+            .groups = "drop") %>%
+  mutate(Timepoint = factor(Timepoint, levels = unique(c(survival_levels, growth_levels))))
 
 ```
 
@@ -805,7 +774,7 @@ popsize.median_All <- dplyr::bind_rows(popsize.median_Survival,
 
 ### Figure 3 A ###
 
-Growth_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Growth", Population_Morphology == "Mixture"),
+Growth_Mixture <- ggplot(popsize_tube %>% filter(Condition == "Growth", Population_Morphology == "Mixture"),
        aes(x = Timepoint, y = median,
            color = Treatment,
            linetype = Population_Morphology,
@@ -817,7 +786,7 @@ Growth_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Growth", Po
   scale_linetype_manual(values = c("Mixture" = "dotted")) +
   xlab("Timepoint") +
   ylab("Log10(CFU/mesocosm)") +
-  scale_y_log10() +
+#  scale_y_log10() +
     coord_cartesian(ylim = c(3, 10)) +
 #  facet_wrap(~Condition,  scales = "free_x") +
   theme_minimal(base_size = 12) +
@@ -908,7 +877,7 @@ anova_Mixed_PercDry_Growth
 anova_Mixed_PercDry_Growth <- anova_Mixed_PercDry_Growth %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+  dplyr::select(-`Mean Sq`)
 anova_Mixed_PercDry_Growth
 write_xlsx(anova_Mixed_PercDry_Growth, here("Phenotype", "Tables", "EPS_TableS7A_FromR.xlsx"))
 
@@ -1027,8 +996,8 @@ Anova_Growth_soil_Treatments <- bind_rows(anova_Mixed_PercDry_Growth_22C, anova_
 Anova_Growth_soil_Treatments <- Anova_Growth_soil_Treatments %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`) %>%
-  dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "P")
+  dplyr::select(-`Mean Sq`) %>%
+  dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "Pr(>F)")
 Anova_Growth_soil_Treatments
 
 write_xlsx(Anova_Growth_soil_Treatments, here("Phenotype", "Tables", "EPS_TableS7B_FromR.xlsx"))
@@ -1050,7 +1019,7 @@ write_xlsx(dunnett_growth_all, here("Phenotype", "Tables", "EPS_TableS7C_FromR.x
 
 ```{r}
 
-Survival_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Survival", Population_Morphology == "Mixture"),
+Survival_Mixture <- ggplot(popsize_tube %>% filter(Condition == "Survival", Population_Morphology == "Mixture"),
        aes(x = Timepoint, y = median,
            color = Treatment,
            linetype = Population_Morphology,
@@ -1062,7 +1031,7 @@ Survival_Mixture <- ggplot(popsize.median_All %>% filter(Condition == "Survival"
   scale_linetype_manual(values = c("Mixture" = "dotted")) +
   xlab("Timepoint") +
   ylab("Log10(CFU/mesocosm)") +
-  scale_y_log10() +
+#  scale_y_log10() +
   coord_cartesian(ylim = c(3, 10)) +
 #  facet_wrap(~Condition,  scales = "free_x") +
   theme_minimal(base_size = 12) +
@@ -1103,7 +1072,7 @@ anova_Mixed_PercDry_Survival
 anova_Mixed_PercDry_Survival <- anova_Mixed_PercDry_Survival %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+  dplyr::select(-`Mean Sq`)
 
 write_xlsx(anova_Mixed_PercDry_Survival, here("Phenotype", "Tables", "EPS_TableS8A_FromR.xlsx"))
 
@@ -1256,8 +1225,8 @@ Anova_Survival_soil_Treatments
 Anova_Survival_soil_Treatments <- Anova_Survival_soil_Treatments %>%
   mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`) %>%
-  dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "P")
+  dplyr::select(-`Mean Sq`) %>%
+  dplyr::select("Treatment", "Term", "Df", "Sum Sq", "F value", "Pr(>F)")
 Anova_Survival_soil_Treatments
 
 write_xlsx(Anova_Survival_soil_Treatments, here("Phenotype", "Tables", "EPS_TableS8B_FromR.xlsx"))
@@ -1269,7 +1238,7 @@ dunnett_Survival_all <- rbind(Dunnett_Mixed_PercDry_Survival_32C, Dunnett_Mixed_
 dunnett_Survival_all
 
 
-write_xlsx(dunnett_Survival_all, here("Phenotype", "Tables", "EPS_TableS8C_Dunnett.xlsx"))
+write_xlsx(dunnett_Survival_all, here("Phenotype", "Tables", "EPS_TableS8C_FromR.xlsx"))
 
 ```
 
@@ -1285,8 +1254,6 @@ Initial_ave_growth <- Survival_Mesocosm_Mixture_initial_ave %>%
   pull(Initial_ave_growth)
 
 Initial_ave_growth
-
-###Not for myself: Maria here you need to organize in order the data for the times. It is not in order
 
 Survival_DryPercentage <- ggplot(data = soil.expanded_ave %>% 
                                    filter(Condition == "Survival" & Population_Morphology == "Mixture" & Timepoint != "0") %>% 
@@ -1334,7 +1301,7 @@ There was a shift from Mucoid to Dry
 ```{r}
 
 
-Growth_Survival_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology == "Mucoid"),
+Growth_Survival_Mucoid <- ggplot(popsize_tube %>% filter(Population_Morphology == "Mucoid"),
        aes(x = Timepoint, y = median,
            color = Treatment,
            linetype = Population_Morphology,
@@ -1346,7 +1313,7 @@ Growth_Survival_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morpho
   scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
   xlab("Timepoint") +
   ylab("Log10(CFU/mesocosm)") +
-  scale_y_log10() +
+#  scale_y_log10() +
   facet_wrap(~Condition,  scales = "free_x") +
   theme_minimal(base_size = 12) +
   theme(
@@ -1360,9 +1327,9 @@ Growth_Survival_Mucoid <- ggplot(popsize.median_All %>% filter(Population_Morpho
     legend.position  = "none")
 
 
-Growth_Mucoid
+Growth_Survival_Mucoid
 
-ggsave(Growth_Mucoid, 
+ggsave(Growth_Survival_Mucoid, 
        filename = here("Phenotype", "Figures" ,"EPS_FigureS5AB_FromR.pdf"),
        device = "pdf",
        height = 5, width = 9, units = "in")
@@ -1458,7 +1425,7 @@ This might be the wrong approach but I think results wise, it is better if dry b
 
 #### Growth and Survival for both mucoid and dry bacteria 
 
-Growth_Survival_DryMucoid <- ggplot(popsize.median_All %>% filter(Population_Morphology %in% c("Dry", "Mucoid")),
+Growth_Survival_DryMucoid <- ggplot(popsize_tube %>% filter(Population_Morphology %in% c("Dry", "Mucoid")),
        aes(x = Timepoint, y = median,
            color = Treatment,
            linetype = Population_Morphology,
@@ -1470,7 +1437,7 @@ Growth_Survival_DryMucoid <- ggplot(popsize.median_All %>% filter(Population_Mor
   scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
   xlab("Timepoint") +
   ylab("Log10(CFU/mesocosm)") +
-  scale_y_log10() +
+#  scale_y_log10() +
   facet_wrap(~Condition,  scales = "free_x") +
   theme_minimal(base_size = 12) +
   theme(
@@ -1496,7 +1463,7 @@ ggsave(Growth_Survival_DryMucoid,
 
 
 #### Only Growth and Survival of Dry
-Growth_Survival_Dry <- ggplot(popsize.median_All %>% filter(Population_Morphology == "Dry"),
+Growth_Survival_Dry <- ggplot(popsize_tube %>% filter(Population_Morphology == "Dry"),
        aes(x = Timepoint, y = median,
            color = Treatment,
            linetype = Population_Morphology,
@@ -1508,7 +1475,7 @@ Growth_Survival_Dry <- ggplot(popsize.median_All %>% filter(Population_Morpholog
   scale_linetype_manual(values = c("Mucoid" = "solid", "Dry" = "dashed")) +
   xlab("Timepoint") +
   ylab("Log10(CFU/mesocosm)") +
-  scale_y_log10() +
+#  scale_y_log10() +
   facet_wrap(~Condition,  scales = "free_x") +
   theme_minimal(base_size = 12) +
   theme(
@@ -1544,13 +1511,10 @@ Open the files
 
 ######## PLANT TRAITS ##################
 
-
-
 ### Data that contains the results from the single inoculation experiments that contains plant fitness data (shoot biomass) and nodule number
 
-Host_data <-  read.csv(here("Phenotype", "Data_input", "Single_Strain_Experiment_Host.csv"))
-Host_data
-
+Host_data <-  read.csv(here("Phenotype", "Data_input", "Single_Strain_Experiment_Host.csv")) #Here rep is the block
+#View(Host_data)
 
 ### Find total nodule number 
 
@@ -1566,6 +1530,7 @@ hist(Host_data$Prop_branched) #Shows normal distribution
 ### Data coming from the multi-strain inoculation experiments that contains rhizobial strain fitness
 
 Freq_data <-  read.table(here("Phenotype", "Data_input", "freq_100_AVT118.tsv"), header = TRUE, sep = "")
+#View(Freq_data)
 
 Freq_data <- Freq_data %>% 
   separate(col = pool, 
@@ -1605,7 +1570,7 @@ meso_fit <-as_tibble(cbind(Freq_data_NoInitial[,c(1:5)],log2(normalized))) #Find
 
 meso_fit <- meso_fit %>%
   mutate(across(where(is.numeric), ~ ifelse(. == -Inf, -8, .))) 
-meso_fit
+#View(meso_fit)
 
 
 ### Represent the values in the long format to be able to paste the values for Morphology 
@@ -1621,7 +1586,7 @@ meso_fit_long
 
 
 StrainFitness_Plant <- merge(meso_fit_long, Strains, by = "Strain_Code")
-StrainFitness_Plant
+View(StrainFitness_Plant)
 
 
 
@@ -1660,6 +1625,7 @@ Host_ave
 Phylo_inf <- read_csv(here("Phenotype", "Tables", "PCA_scores_strains.csv"))
 Phylo_inf
 
+
 ### Merge the per strain average of the Plant Traits, rhizobia relative fitness and the phylotenetic information 
 
 ## Merge Host_data_ave and meso_fit_ave based on Strain_Code and on alfalfa variety 
@@ -1670,6 +1636,16 @@ Host_data_ave_all
 
 write_csv(Host_data_ave_all, here("Phenotype", "Tables", "Host_data_ave_all.csv"))
 
+
+### Whole data sets - no average ###
+
+
+### Files that do not have the average ### 
+
+Host_all <- left_join(Host_data, Phylo_inf %>% dplyr::select(Strain, Morphology, PC1, PC2), by = c("Strain", "Morphology"))
+
+Rhizo_fit_all <- left_join(StrainFitness_Plant, Phylo_inf %>% dplyr::select(Strain, Morphology, PC1, PC2), by = c("Strain", "Morphology"))
+#View(Rhizo_fit_all)
 ```
 
 ##### Plant benefit #####
@@ -1719,11 +1695,22 @@ ggsave(HostBiomass,
 ### Statistical analysis
 
 hist(Host_data_ave_all$ave_shoot)
+#View(Host_data)
 
-aov_hostbiomass <- aov(ave_shoot ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
-summary(aov_hostbiomass)
+### Add PC1 and PC2 to Host_data file to account for them in the statistical model 
+#View(Phylo_inf)
+#View(Host_data)
+#View(plant_long)
 
-anova_hostbiomass <- anova(aov_hostbiomass)
+#aov_hostbiomass <- aov(ave_shoot ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
+#summary(aov_hostbiomass)
+
+#anova_hostbiomass <- car::Anova(aov_hostbiomass, type = "II") ## Maybe I need to incorporate this but the results are very similar
+
+m_shoot <- lmer(Shootweight_g ~ Morphology*Variety + PC1 + PC2 + Rep + (1|Strain) + (1|Strain:Variety), data = Host_all)
+summary(m_shoot)
+
+anova_hostbiomass <- anova(m_shoot, type = "II")
 anova_hostbiomass
 
 anova_hostbiomass <- rownames_to_column(as.data.frame(anova_hostbiomass), var = "Term") #For table formating
@@ -1732,11 +1719,12 @@ anova_hostbiomass
 ## Aesthetics
 
 anova_hostbiomass <- anova_hostbiomass %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`)
+  mutate(across(where(is.numeric) & !matches("^NumDF$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`))
+#  dplyr::select(-`Mean Sq`)
 
 anova_hostbiomass
+
 write_xlsx(anova_hostbiomass, here("Phenotype", "Tables", "EPS_TableS10A_FromR.xlsx"))
 
 ```
@@ -1783,64 +1771,47 @@ ggsave(meso_fit_ggplot,
        height = 4, width = 6, units = "in")
 
 
-
-
-aov_RhizobialFitness <- lm(Fitness_ave ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
+aov_RhizobialFitness <- lmer(Fitness ~ Morphology*Variety + PC1 + PC2 + Rep + (1|Strain) + (1|Strain:Variety), data = Rhizo_fit_all)
 summary(aov_RhizobialFitness)
 
-
-anova_RhizobialFitness <- anova(aov_RhizobialFitness)
-anova_RhizobialFitness
+anova_RhizobialFitness <- anova(aov_RhizobialFitness, type = "II")
 
 anova_RhizobialFitness <- rownames_to_column(as.data.frame(anova_RhizobialFitness), var = "Term") #For table formating
-anova_RhizobialFitness ## Nothing is significant here
+anova_RhizobialFitness ## The interaction is significant
 
 anova_RhizobialFitness <- anova_RhizobialFitness %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+  mutate(across(where(is.numeric) & !matches("^DenDF$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`))
+#  dplyr::select(Term, Df, `Sum Sq`, `F value`, `Pr(>F)`)
 
 anova_RhizobialFitness
 write_xlsx(anova_RhizobialFitness, here("Phenotype", "Tables", "EPS_TableS9A_FromR.xlsx"))
 
+### 
 
-### Subset ###
+lmer_Rfit_O <- lmer(Fitness ~ Morphology + PC1 + PC2 + Rep + (1|Strain), data = Rhizo_fit_all %>% filter(Variety == "O"))
+summary(lmer_Rfit_O)
+anova_Rfit_O <- anova(lmer_Rfit_O, type = "II")
+anova_Rfit_O
+anova_Rfit_O <- rownames_to_column(as.data.frame(anova_Rfit_O), var = "Term") %>% mutate(Variety = "O")
 
+lmer_Rfit_S <- lmer(Fitness ~ Morphology + PC1 + PC2 + Rep + (1|Strain), data = Rhizo_fit_all %>% filter(Variety == "S"))
+summary(lmer_Rfit_S)
+anova_Rfit_S <- anova(lmer_Rfit_S, type = "II")
+anova_Rfit_S
+anova_Rfit_S <- rownames_to_column(as.data.frame(anova_Rfit_S), var = "Term") %>% mutate(Variety = "S")
 
-aov_Rfit_O <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "O"))
-summary(aov_Rfit_O)
-anova_Rfit_O <- anova(aov_Rfit_O)
-anova_Rfit_O <- rownames_to_column(as.data.frame(anova_Rfit_O), var = "Term") #For table formating
-anova_Rfit_O <- anova_Rfit_O %>% mutate(Variety = "O")
-
-
-aov_Rfit_S <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "S"))
-anova_Rfit_S <- anova(aov_Rfit_S)
-anova_Rfit_S  
-anova_Rfit_S <- rownames_to_column(as.data.frame(anova_Rfit_S), var = "Term") #For table formating
-anova_Rfit_S <- anova_Rfit_S %>% mutate(Variety = "S")
-
- 
-aov_Rfit_V <- lm(Fitness_ave ~ Morphology + PC1 + PC2, Host_data_ave_all %>% filter(Variety == "V"))
-anova_Rfit_V <- anova(aov_Rfit_V)
+lmer_Rfit_V <- lmer(Fitness ~ Morphology + PC1 + PC2 + Rep + (1|Strain), data = Rhizo_fit_all %>% filter(Variety == "V"))
+summary(lmer_Rfit_V)
+anova_Rfit_V <- anova(lmer_Rfit_V, type = "II")
 anova_Rfit_V
-anova_Rfit_V <- rownames_to_column(as.data.frame(anova_Rfit_V), var = "Term") #For table formating
-anova_Rfit_V <- anova_Rfit_V %>% mutate(Variety = "V")
+anova_Rfit_V <- rownames_to_column(as.data.frame(anova_Rfit_V), var = "Term") %>% mutate(Variety = "V")
 
-
-
-#### Compile the Anovas ####
-
-
-Anova_RhizobialFitness_Varieties <- bind_rows(anova_Rfit_O, anova_Rfit_S, anova_Rfit_V)
-Anova_RhizobialFitness_Varieties
-Anova_RhizobialFitness_Varieties
-
-Anova_RhizobialFitness_Varieties <- Anova_RhizobialFitness_Varieties %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
+Anova_RhizobialFitness_Varieties <- bind_rows(anova_Rfit_O, anova_Rfit_S, anova_Rfit_V) %>%
+  mutate(DenDF = sprintf("%.1f", DenDF),
+         across(c(`Sum Sq`, `F value`, `Pr(>F)`), ~ sprintf("%.3f", .))) %>%
   mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(-`Mean Sq`, P = `Pr(>F)`) %>%
-  dplyr::select("Variety", "Term", "Df", "Sum Sq", "F value", "P")
+  dplyr::select(Variety, Term, NumDF, DenDF, `Sum Sq`, `F value`, `Pr(>F)`)
 
 Anova_RhizobialFitness_Varieties
 
@@ -2024,19 +1995,18 @@ stat_boxplot(geom = "errorbar", width = 0.3,position = position_dodge(width = 0.
 
 Host_NoduleTotal
 
-
-
 ggsave(Host_NoduleTotal, 
        filename = here("Phenotype", "Figures" ,"EPS_FigureS8A_FromR.pdf"),
        device = "pdf",
        height = 3, width = 4, units = "in")
 
+#View(Host_all)
 
-
-aov_hostnodtotal <- lm(ave_nod_total ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
+aov_hostnodtotal <- lmer(Nod_number ~ Morphology*Variety + PC1 + PC2 + Rep + (1|Strain) + (1|Strain:Variety), data = Host_all)
 summary(aov_hostnodtotal)
-anova_aov_hostnodtotal <- anova(aov_hostnodtotal)
-anova_aov_hostnodtotal
+
+anova_aov_hostnodtotal <- anova(aov_hostnodtotal, Type = "II")
+anova_aov_hostnodtotal ## Significant interaction
 
 anova_aov_hostnodtotal <- rownames_to_column(as.data.frame(anova_aov_hostnodtotal), var = "Term") #For table formating
 anova_aov_hostnodtotal
@@ -2044,10 +2014,9 @@ anova_aov_hostnodtotal
 ## Aesthetics
 
 anova_aov_hostnodtotal <- anova_aov_hostnodtotal %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(Trait = "Nodule number") %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+  mutate(across(where(is.numeric) & !matches("^NumDF$"), ~ sprintf("%.3f", .))) %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`))
+#  dplyr::select(Term, Df, `Sum Sq`, `F value`, `Pr(>F)`)
 
 anova_aov_hostnodtotal
 write_xlsx(anova_aov_hostnodtotal, here("Phenotype", "Tables", "EPS_TableS10B_FromR.xlsx"))
@@ -2088,23 +2057,22 @@ ggsave(Host_Branching,
        device = "pdf",
        height = 3, width = 4, units = "in")
 
-
-
-aov_hostBranching <- aov(ave_prop_branched ~ Morphology*Variety + PC1 + PC2, Host_data_ave_all)
+aov_hostBranching <- lmer(Prop_branched ~ Morphology*Variety + PC1 + PC2 + Rep + (1|Strain) + (1|Strain:Variety), data = Host_all)
 summary(aov_hostBranching)
-anova_aov_hostBranching <- anova(aov_hostBranching)
+anova_aov_hostBranching <- anova(aov_hostBranching, Type = "II")
 anova_aov_hostBranching
 
 anova_aov_hostBranching <- rownames_to_column(as.data.frame(anova_aov_hostBranching), var = "Term") #For table formating
 anova_aov_hostBranching
 
 anova_aov_hostBranching <- anova_aov_hostBranching %>%
-  mutate(across(where(is.numeric) & !matches("^Df$"), ~ sprintf("%.3f", .))) %>%
-  mutate(Trait = "Proportion of Branched nodules") %>%
-  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`)) %>%
-  dplyr::select(Trait, Term, Df, `Sum Sq`, `F value`, P = `Pr(>F)`)
+  mutate(across(where(is.numeric) & !matches("NumDF$"), ~ sprintf("%.3f", .))) %>%
+#  mutate(Trait = "Proportion of Branched nodules") %>%
+  mutate(`Pr(>F)` = ifelse(as.numeric(`Pr(>F)`) < 0.001, "< 0.001", `Pr(>F)`))
+#  dplyr::select(Term, Df, `Sum Sq`, `F value`, `Pr(>F)`)
 
 anova_aov_hostBranching
+
 write_xlsx(anova_aov_hostBranching, here("Phenotype", "Tables", "EPS_TableS10C_FromR.xlsx"))
 
 ```

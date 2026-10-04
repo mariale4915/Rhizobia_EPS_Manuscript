@@ -431,6 +431,7 @@ pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \
   --similarity Data_input/phylogeny_similarity.tsv \
   --output-patterns patterns_Glucose_maf05_PA.txt \
   > pyseer_results_Glucose_maf05_PA.txt
+# h^2 = 0.50
 
 
 
@@ -454,6 +455,9 @@ pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \
   --similarity Data_input/phylogeny_similarity.tsv \
   --output-patterns patterns_snps_glucose.txt \
   > pyseer_snp_results_glucose.txt
+
+#h^2 = 0.50
+
 
 To calculate the number of genes/SNP variants that covary across all of the strains I used the count_patterns.py that is part of the pyseer github folder. 
 
