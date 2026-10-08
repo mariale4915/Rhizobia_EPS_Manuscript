@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-
+library(writexl)
 library(tidyverse)
 library(ggpubr)
 library(ggplot2)
@@ -37,13 +37,12 @@ citation("caper")
 set.seed(123)
 ```
 
-I am still importing this information from Sohini's github but as soon as she has decided the information is correct, I can think about moving this to my repository or use the link to hers
-### Get the data that will be used ofr itols
+### Get the data that will be used for itols
 
 ```{r}
 
-
-tree<-read.tree(here("Genotype", "Data_input", "AVT_single_copy_core_concat.fasta.treefile")) ### I am using this file but Sohini still hasn't told me how this file was created (whether it is rooted or not, this is the same tree that was used for Liz's paper) 
+## Tree created with the single-copy core genes from the 117 AVT strains
+tree<-read.tree(here("Genotype", "Data_input", "AVT_single_copy_core_concat.fasta.treefile")) 
 tree
 
 ## Extract the strains in the tree which represents what Sohini used. 
@@ -190,7 +189,7 @@ analysis_tree <- drop.tip(tree_rooted2, c("Sinorhizobium meliloti RM1021", "Sino
 analysis_tree
 
 
-# 3. Resolve any polytomies on the now-pruned, rooted tree. I don't think the tree had a polytomies, so I don't think this was needed in the analysis now that I am revisiting it.
+# 3. Resolve any polytomies on the now-pruned, rooted tree. I don't think the tree had a polytomies now that I am taking a second look at it, so I don't think this was needed in the analysis, but this should not change the result. Consider pruning this step after reviewing.
 analysis_tree <- multi2di(analysis_tree)
 analysis_tree
 analysis_tree$edge.length[analysis_tree$edge.length == 0] <- 1e-8
@@ -272,10 +271,6 @@ write_csv(d_summary, here("Genotype", "Tables", "EPS_TableS4_FromR.csv"))
 
 ## Preparing the files that will be used as data input in pyseer
 
-I have created the file gene_hits.tsv that should be in /storage/home/mag6678/burghardt/MariaGil/EPS_genes/panaroo/gene_hits.tsv that is where I created this file. I used globus to transfer it to my local Github (/Users/mariaalejandragilpolo/Documents/GitHub/Rhizobia_EPS_Manuscript/Data_input/Genome/). If I edit gene_hits.tsv in roar collab I need to transfer again to keep that file updated. ## I was using gene_hits.tsv when using fisher test to try fo this specific group of genes though. 
-
-The edited files have been moved to: 
-
 I am transfering "gene_presence_absence.Rtab", "Binary_phenotype_pyseer.txv" and "Glucose_phenotype_pyseer.tsv" to the following path in the terminal to run pyseer there: 
 
 /storage/home/mag6678/burghardt/MariaGil/EPS_genes/pyseer_EPS/Data_input
@@ -294,7 +289,7 @@ This will have the presence absence and the SNP data
 
 gene_presence_absence_pyseer <- read.delim(here("Genotype", "Data_input", "gene_presence_absence.Rtab"), header = TRUE) #I opened panaroo output. In this file strains were labeled in a different way than they were labeled in the phylogenetic tree in Guha et al., 2026, so in the next steps I homogenized the labeling system 
 gene_presence_absence_pyseer
-gene_presence_absence_pyseer <- gene_presence_absence_pyseer %>% select(-c("strain_NIG", "strain_EXC")) #Remove the strains that are not part of the AVT collection.
+gene_presence_absence_pyseer <- gene_presence_absence_pyseer %>% dplyr::select(-c("strain_NIG", "strain_EXC")) #Remove the strains that are not part of the AVT collection.
 
 Strains <- read_excel(here("Genotype", "Data_input", "Strains_Description_Phenotype_Github.xlsx")) # Import the table with the AVT format labels used in Guha et al., 2026 (Strain_Code) and the the one used in this manuscript (Strain). I want the codes in these R.tab document to have the same format than Strain_Code
 
@@ -320,7 +315,7 @@ gene_pa_filtered <- gene_presence_absence_pyseer %>%
   mutate(af = mean(c_across(all_of(strain_cols)))) %>%
   ungroup() %>%
   filter(af >= 0.05 & af <= 0.95) %>%
-  select(-af) ## By cutting the genes that were present in more than 100% I am cutting the genes that were present in all of the strains, which is good because I do not want to work with genes that were invariant.
+  dplyr::select(-af) ## By cutting the genes that were present in more than 100% I am cutting the genes that were present in all of the strains, which is good because I do not want to work with genes that were invariant.
 
 gene_pa_filtered
 
@@ -361,7 +356,7 @@ tabix -p vcf strain_118_filtered.recode.vcf.gz ##strain_118_filtered.recode.vcf.
 ####  Binary phenotype, where Mucoid is 1 and Dry is 0 ####
 
 Strains_pyseer <- Strains %>% mutate(Binary_trait = ifelse(Morphology == "Mucoid", 1,0))
-Strains_pyseer <- Strains_pyseer %>% select(c("Strain_Code", "Binary_trait"))
+Strains_pyseer <- Strains_pyseer %>% dplyr::select(c("Strain_Code", "Binary_trait"))
 Strains_pyseer <- Strains_pyseer %>% rename("samples" = "Strain_Code") ## pyseer wants it labeled as "samples".
 Strains_pyseer
 
@@ -372,15 +367,15 @@ write_tsv(Strains_pyseer, here("Genotype", "Tables", "Binary_phenotype_pyseer.ts
 ## Glucose quantitative data
 
 
-Anthrone_mean <- read_excel(here("Phenotype", "Tables", "Anthrone_mean.xlsx"))
+Anthrone_mean <- read_csv(here("Phenotype", "Tables", "Anthrone_mean.csv"))
 Anthrone_mean
 
 Anthrone_mean_pyseer <- merge(Anthrone_mean, Strains, by = "Strain")
 Anthrone_mean_pyseer
-Anthrone_mean_pyseer <- Anthrone_mean_pyseer %>% select(c("Strain_Code", "Glucose_OD600_ave"))
+Anthrone_mean_pyseer <- Anthrone_mean_pyseer %>% dplyr::select(c("Strain_Code", "Glucose_OD600_ave"))
 Anthrone_mean_pyseer <- Anthrone_mean_pyseer %>% rename("samples" = "Strain_Code") ## pyseer wants it labeled as "Name".
 Anthrone_mean_pyseer
-write_tsv(Anthrone_mean_pyseer, here("Tables", "Glucose_phenotype_pyseer.tsv")) 
+write_tsv(Anthrone_mean_pyseer, here("Genotype", "Tables", "Glucose_phenotype_pyseer.tsv")) 
 
 ```
 
@@ -388,10 +383,6 @@ write_tsv(Anthrone_mean_pyseer, here("Tables", "Glucose_phenotype_pyseer.tsv"))
 ### RUN PYSEER
 
 This was done in the terminal 
-
-I have to decide about the equivalent. Which one do I trust the most, adn go with that one. I don't have to report all the in-between stuff. First three PCs and I would include that as a co-varient.
-
-That is a reasonable next step. If it is not related, presence/absence. How much having such an unbalenced design, how much that affects this analysis. 
 
 Account for population structure
 
@@ -499,633 +490,3 @@ python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/count_patterns.py
 
 
 ```
-
-############# EXTRA CODE ##############
-
-Here I am trying to take a look at the annotations of the genes nin the presence absence and the SNP data but none of the candidates was significant for any of the results. If the coauthors or the reviewers request the annotations of the top 10 p-values or something I can come back and use these files to create an extra dataset. 
-
-
-### Import the top 10 to datasets to share ###
-
-
-
-### Take a look at the genes ###
-
-
-## Presence/Absence ##
-
-
-#```{r}
-
-## For exploratory reasons I will conserve the candidates that have higher lrt-pvalue than 10^-3
-
-gene_presence_absence <- read_csv(here("Data_input", "Genome", "gene_presence_absence.csv")) ## File that has the annotations
-gene_presence_absence 
-
-######## PRESENCE ABSENCE #########
-
-#### Using glm 
-
-pyseer_glm_tree <- read_tsv(here("Data_input", "Genome", "pyseer_results_glm_binary_PA.txt")) # the threshold p-value should be 4.39E-05
-#View(pyseer_glm_tree)
-PA_candidates <- merge(PresenceAbsence_Candidates %>% rename("Gene" = "variant"), gene_presence_absence, by = "Gene")
-candidate_genes <- c("group_7629")
-
-seq_lookup <- gene_presence_absence %>%
-  filter(Gene %in% candidate_genes) %>%
-    pivot_longer(-c(Gene, `Non-unique Gene name`, Annotation), names_to = "strain", values_to = "seq_id") %>%
-  rename(Strain_panaroo = strain)
-seq_lookup
-
-
-binary_maf05_PA
-
-PresenceAbsence_Candidates <- binary_maf05_PA
-
-PA_candidates <- merge(PresenceAbsence_Candidates %>% rename("Gene" = "variant"), gene_presence_absence, by = "Gene")
-
-PA_candidates
-
-candidate_genes <- c("group_7941")
-gene_presence_absence
-
-seq_lookup <- gene_presence_absence %>%
-  filter(Gene %in% candidate_genes) %>%
-    pivot_longer(-c(Gene, `Non-unique Gene name`, Annotation), names_to = "strain", values_to = "seq_id") %>%
-  rename(Strain_panaroo = strain)
-seq_lookup
-#View(seq_lookup)
-Strains_panaroo
-seq_lookup <- merge(Strains_panaroo %>% select("Strain_Code", "Strain_panaroo", "Morphology"), seq_lookup, by = "Strain_panaroo")
-seq_lookup
-#View(seq_lookup)
-colnames(seq_lookup)
-
-### I want that if there is something written (meaning the gene), it has a 1 and if it doesn't, that it has a 0 
-
-seq_lookup <- seq_lookup %>%
-  mutate(Gene_present = ifelse(is.na(seq_id), 0, 1))
-seq_lookup
-
-
-
-### I will upload this in roar collab and compare this against gbk files from prokka ###
-
-seq_lookup_subset <- seq_lookup %>% filter(!is.na(seq_id)) %>%
-  select(c("Strain_Code", "seq_id")) %>%
-  rename(annotation_id = seq_id) 
-
-write_csv(seq_lookup_subset, here("Tables", "seq_lookup_subset.csv"))
-
-
-
-#View(gene_data)
-### Now I want to get the sequence
-
-### I am pulling the file gene_data_csv from panaroo_output folder and transfering from ROAR collab to R studio 
-
-# I will get the sequences of interest
-gene_data <- read_csv(here("Data_input", "Genome", "gene_data.csv"))
-
-seq_ID <- seq_lookup %>% select(c(Strain_Code, seq_id)) %>% rename("annotation_id" = "seq_id") %>% rename("gff_file" = "Strain_Code")
-seq_ID
-seq_ID <- seq_ID %>% filter(!is.na(annotation_id))
-seq_ID
-
-gene_data_subset <- merge(seq_ID, gene_data, by = c("gff_file", "annotation_id"))
-#View(gene_data_subset)
-gene_data_subset <- gene_data_subset %>% select(c("gff_file", "annotation_id", "dna_sequence")) 
-View(gene_data_subset)
-
-## To be able to 
-
-
-### Create a table to see how many sequences have this present
-
-Table_PA <- seq_lookup %>%
-  group_by(Gene, Morphology.x, Annotation) %>%
-  summarise(n_present = sum(!is.na(seq_id)), .groups = "drop") %>%
-  pivot_wider(names_from = Morphology.x, values_from = n_present, values_fill = 0)
-
-Table_PA
-
-### Create a fisher exact test table 
-
-# 1. Create a 2x2 contingency table
-# Example: Treatment vs. Outcome (Success/Failure)
-data_matrix <- matrix(c(9, 3, 18, 87), nrow = 2, byrow = TRUE)
-
-# Add names for clarity (optional)
-rownames(data_matrix) <- c("Present", "Absent")
-colnames(data_matrix) <- c("Dry", "Mucoid")
-data_matrix #Correct
-
-
-# 2. Run the Fisher's Exact Test
-test_result <- fisher.test(data_matrix)
-
-# 3. Print the results
-print(test_result)
-
-
-
-```
-
-## Presence absence ## With a treshold of 1E-03
-
-#```{r}
-
-
-######## PRESENCE ABSENCE #########
-
-pyseer_results_binary_maff05_PA <- read_tsv(here("Data_input", "Genome", "pyseer_results_binary_maf05_PA.txt"))
-pyseer_results_binary_maff05_PA
-
-binary_maf05_PA <- pyseer_results_binary_maff05_PA %>%
-  filter(`lrt-pvalue` < 1E-03) %>%
-  mutate(Type = "Binary_PA")
-
-binary_maf05_PA
-
-PresenceAbsence_Candidates <- binary_maf05_PA
-### I will keep only the top three candidates that had a 
-
-#Patterns:       1131
-#Threshold:      4.42E-05
-
-
-pyseer_results_Glucose_maff05_PA <- read_tsv(here("Data_input", "Genome", "pyseer_results_Glucose_maf05_PA.txt"))
-#View(pyseer_results_Glucose_maff05_PA) ## After removing the genes present in less than 5% of the samples, the p-values of most of the candidates are very low
-
-#Patterns:       1122
-#Threshold:      4.46E-05
-
-Glucose_maf05_PA <- pyseer_results_Glucose_maff05_PA %>%
-  filter(`lrt-pvalue` < 1E-03) %>%
-  mutate(Type = "Glucose_PA")
-Glucose_maf05_PA
-
-## Store candidates for presence absence 
-
-PresenceAbsence_Candidates <- rbind(binary_maf05_PA, Glucose_maf05_PA)
-#View(PresenceAbsence_Candidates)
-
-write_csv(PresenceAbsence_Candidates, here("Tables", "PresenceAbsence_Candidates.csv"))
-
-gene_presence_absence <- read_csv(here("Data_input", "Genome", "gene_presence_absence.csv"))
-gene_presence_absence
-
-### Now I will just filter with the ones that got selected
-
-PresenceAbsence_Candidates
-
-
-PA_candidates <- merge(PresenceAbsence_Candidates %>% rename("Gene" = "variant"), gene_presence_absence, by = "Gene")
-PA_candidates
-#View(PA_candidates)
-
-### Rearrange the file and get the name of the sequences
-
-candidate_genes <- c("group_7941", "group_7403", "group_7629", "group_7069")
-
-## Make the figure that shows in how many mucoid and how many dry is each one showing up 
-
-seq_lookup <- gene_presence_absence %>%
-  filter(Gene %in% candidate_genes) %>%
-    pivot_longer(-c(Gene, `Non-unique Gene name`, Annotation), names_to = "strain", values_to = "seq_id") %>%
-  rename(Strain_panaroo = strain)
-seq_lookup
-
-seq_lookup <- merge(Strains_panaroo %>% select("Strain", "Strain_panaroo", "Morphology"), seq_lookup, by = "Strain_panaroo")
-#View(seq_lookup)
-colnames(seq_lookup)
-
-### Create a table 
-Table_PA <- seq_lookup %>%
-  group_by(Gene, Morphology, Annotation) %>%
-  summarise(n_present = sum(!is.na(seq_id)), .groups = "drop") %>%
-  pivot_wider(names_from = Morphology, values_from = n_present, values_fill = 0)
-
-
-#View(Table_PA)
-
-### I think it feels unfair because Dry bacteria are 27 strains and mucoid are 90 strains so I might need to "/"
-
-Table_PA_percentage <- Table_PA %>%
-  mutate(Dry_Percentage = Dry/27*100) %>%
-  mutate(Mucoid_Percentage = Mucoid/90*100)
-#View(Table_PA_percentage)
-
-Table_PA_percentage
-
-### To import, I want to add the information about the p-values currently 
-PA_candidates
-PA_import <- merge(PA_candidates %>% select(c("Gene", "af", "filter-pvalue", "lrt-pvalue", "beta", "variant_h2", "notes", "Type")), Table_PA_percentage, by = "Gene")
-View(PA_import)
-
-write_xlsx(PA_import, here("Tables", "Presence_Absence_FinalTable.xlsx"))
-
-
-### Read .tsv with the prokka annotatiosn 
-
-sig_snps_annotated <- read_tsv(here("Data_input", "Genome", "sig_snps_annotated_sorted.txt"))
-sig_snps_annotated
-
-
-col_names <- c("chrom", "start", "end","gff_chrom", "source", "feature", "gene_start", "gene_end", "score", "strand", "frame", "attributes", "bp_overlap")
-
-colnames(sig_snps_annotated) <- col_names
-sig_snps_annotated
-
-## I will further divide the attributes in usable columns 
-
-sig_snps_annotated <- sig_snps_annotated %>%
-  mutate(
-    locus_tag = str_extract(attributes, "(?<=locus_tag=)[^;]+"),
-    gene_name = str_extract(attributes, "(?<=Name=)[^;]+"), 
-    product = str_extract(attributes, "(?<=product=).+"))
-
-## See the dataframe that I used 
-
-sig_snps_annotated
-snp_positions
-
-Important_snps <- merge(snp_positions, sig_snps_annotated, by = c("chrom", "start", "end"))
-Important_snps
-View(Important_snps)
-
-#View(sig_snps_annotated)
-write_xlsx(Important_snps, here("Tables", "SNPs_FinalTable.xlsx"))
-
-
-```
-
-
-
-
-### SNPs ###
-
-#```{r}
-
-#Pyseer has skipped the multi-allelic sites
-
-pyseer_snps_results_binary <- read_tsv(here("Data_input", "Genome", "pyseer_results_glm_binary_snps.txt"))
-
-binary_SNPs <- pyseer_snps_results_binary %>%
-  filter(`lrt-pvalue` < 1E-03) %>%
-  mutate(Type = "Binary_SNPs")
-  
-  
-binary_SNPs
-#View(pyseer_snps_results_binary)
-
-### The numbers of the position of the strains look very close to each other (~1330082) and they are in psymB
-
-### Select the top 10 candidates with the lowest p-lrt
-
-
-pyseer_snps_results_glucose <- read_tsv(here("Data_input", "Genome", "pyseer_snp_results_glucose.txt"))
-#View(pyseer_snps_results_glucose)
-glucose_SNPs <- pyseer_snps_results_glucose %>%
-  filter(`lrt-pvalue` < 1E-03) %>%
-  mutate(Type = "Glucose_SNPs")
-
-glucose_SNPs
-
-#Patterns:       4256
-#Threshold:      1.17E-05
-
-SNP_Candidates <- rbind(binary_SNPs, glucose_SNPs)
-
-## The names here are CHROM_POS_REF_ALT, that were pulled straight from the VCF's own columns. So, 
-
-snp_positions <- SNP_Candidates %>%
-  separate(variant, into = c("chrom", "pos", "ref", "alt"), sep = "_", extra = "merge") %>%
-  mutate(pos = as.numeric(pos))
-snp_positions
-
-snp_positions <- snp_positions %>%
-  mutate(start = pos-1) %>%
-  mutate(end = pos)
-snp_positions
-
-#View(snp_positions)
-## I will have them in a BED POSITION 
-
-snp_positions_import <- snp_positions %>% select(c("chrom", "start", "end"))
-snp_positions_import
-
-
-
-write_tsv(snp_positions_import, here("Tables", "SNP_Candidates.bed"), col_names = FALSE)
-
-
-
-```
-
-
-
-
-######## EXTRA CODE ########
-#```{r}
-
-
-
-
-
-### Open gene_hits.tsv
-
-hits <- read_tsv(here("Data_input", "Genome", "gene_hits.tsv"), col_names = c(
-  "qseqid","sseqid","pident","length","mismatch","gapopen",
-  "qstart","qend","sstart","send","evalue","bitscore"
-))
-
-#View(hits)
-
-best_hits <- hits %>%
-  group_by(qseqid) %>%
-  slice_max(bitscore, n = 1) %>%
-  ungroup()
-
-best_hits
-
-## The sseqid matches the "Gene" name in Kayla's document
-
-### I now will open the file that Kayla sent me 
-
-
-###### Gene presence/absence ##########
-
-
-PrescenceAbsence_original <- read.csv("~/OneDrive - The Pennsylvania State University/Burghardt Lab Shared Folder/Projects/NIFA-AVT-AlfalfaProjects/Aim1bAVT_StrainCollection/Chapter1_Partners_Mariale/Analysis/Genome_EPS/gene_presence_absence.Rtab", sep = "", header = TRUE)
-
-PrescenceAbsence_original
-
-colnames(PrescenceAbsence_original) <- gsub("strain_", "", colnames(PrescenceAbsence_original)) ## Match the "Strain" name in the Strains dataframe that will be opened later
-
-PrescenceAbsence_original
-PrescenceAbsence_original <- PrescenceAbsence_original %>% rename(sseqid = Gene) #Renaming so it can match 
-PrescenceAbsence_original
-
-
-### Merge files 
-
-
-best_hits_subset <- best_hits %>% select(c("qseqid", "sseqid"))
-best_hits_subset
-present_or_not <- merge(best_hits_subset, PrescenceAbsence_original, by = "sseqid")
-present_or_not
-
-#View(present_or_not)
-
-pa <- present_or_not   
-pa <- pa %>% select(-c("EXC", "NIG"))
-pa
-
-
-#View(pa)
-strain_cols <- names(pa)[3:ncol(pa)]
-strain_cols
-pa
-gene_variance <- pa %>%
-  rowwise() %>%
-  mutate(n_present = sum(c_across(all_of(strain_cols))),
-         n_total   = length(strain_cols)) %>%
-  ungroup() %>%
-  select(qseqid, n_present, n_total)
-
-gene_variance
-
-genes <- gene_variance %>% filter(n_present > 0 & n_present < n_total)   # only the genes worth testing
-#View(genes)
-genes
-
-## Add the morphology
-
-Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx"))
-
-Strains 
-
-### Merge the morphotype with the presence absence table 
-
-morphotype_df <- tibble(strain = strain_cols) %>%
-  mutate(
-    strain_num = as.numeric(str_extract(strain, "\\d+")),
-    morphotype = if_else(strain_num <= 96, "Mucoid", "Dry")
-  )
-#morphotype_df
-
-Strains <- Strains %>% select(c("Strain", "Morphology"))
-pa
-pa_long <- pa %>%
-  pivot_longer(cols = all_of(strain_cols), names_to = "Strain", values_to = "present") %>%
-  left_join(Strains, by = "Strain") %>%
-  group_by(qseqid) %>%
-  filter(n_distinct(present) > 1) %>%          # automatically drops invariant genes
-  summarise(p_value = fisher.test(table(present, Morphology))$p.value, .groups = "drop") %>%
-  mutate(p_adj = p.adjust(p_value, method = "BH"))   # multiple-testing correction
-
-
-
-sum(results_check$p_value < 0.05, na.rm = TRUE)
-
-```
-
-
-EXTRA 
-
-#```{r}
-###### THIS WAS FOR SCOARY THAT I AM NO LONGER USING because I am moving to pyseer ######.
-
-# The file that pyseer uses is different
-
-### I want to create a file that I can send to roar collab for scoary analysis. Scoary needs binomical data so Mucoid= 1 and Dry= 0. Additionally,  I need to send the name of the "Strains" in the format that Kayla is using in her files, which are "strain_001", "strain_002", etc, which means adding the "strain_" to the Strain column. 
-
-
-gene_presence_absence <- read_csv(here("Data_input", "Genome", "gene_presence_absence.csv"))
-#View(gene_presence_absence)
-gene_presence_absence_edited <- gene_presence_absence %>% select(-c("strain_NIG", "strain_EXC"))
-# get the labels "strain_001", "strain_002", etc to be AVT1, AVT2, AVT3
-
-  Strains <- read_excel(here("Data_input", "Strains_Description_Phenotype_Github.xlsx"))
-#View(Strains)
-class(Strains$Strain) 
-
-Strains_panaroo <- Strains %>%
-  mutate(Strain_panaroo = paste0("strain_", Strain))
-head(Strains_panaroo$Strain_panaroo, 5)
-
-## Now I will replace the names in the gene_presence_absence_edited with the AVT1, AVT2, AVT3 names
-
-## build the rename map: names(new) = old column name, values = new column name
-
-rename_map <- setNames(Strains_Kayla$Strain_Kayla, Strains_Kayla$Strain_Code) ## Strains_Kayla is a dataframe and Strain_Kayla is a column that has the strain_001, format
-rename_map
-#View(rename_map)
-
-gene_presence_absence_renamed <- gene_presence_absence_edited %>% rename(any_of(rename_map))
-colnames(gene_presence_absence_renamed)
-#View(gene_presence_absence_renamed)
-
-write.csv(gene_presence_absence_renamed, here("Tables", "gene_presence_absence_renamed.csv"), row.names = FALSE)## When I exported this as csv it created an unnamed column that was giving me problems when Iw as workign in the shell. Therefore I am stating that I do nto want that
-
-
-#######################
-
-
-
-###### THIS WAS FOR SCOARY THAT I AM NO LONGER USING ######.
-
-
-
-## I will use Strain_Code because I just renamed Kayla's file gene_presence_absence with that code but I will not use Strain_Code, or
-
-#View(Strains_scoary) ##
-
-#Now the name of the Strain will get "strain_001"
-
-#Strains_scoary <- Strains_scoary %>% 
-#  mutate(Strain_scoary = paste0("strain_", Strain))
-#View(Strains_scoary)
-## Using globus I transfered Strains_scoary.csv and gene_presence_absence_renamed.csv to roar collab, as of now: /storage/home/mag6678/burghardt/MariaGil/EPS_genes/panaroo and I will also transfer 
-
-
-
-### Now I am trying with pyseer. It was not a good idea to use the file that was built to use in scoary for pyseer because it has two extra columns that are not meant for pyseer --press. 
-
-#pyseer_pheno <- Strains_scoary %>% rename(samples = Name)# pyseer specifically expect the column samples "samples"
-#pyseer_pheno
-#write_tsv(pyseer_pheno, here("Tables", "Strains_pyseer.tsv")) 
-
-
-
-
-#```{r}
-
-### Presence Absence
-
-### Pyseer presence absence binomial data
-
-pyseer_results_binary_PA <- read_tsv(here("Data_input", "Genome", "pyseer_results_binary_PA.txt"))
-#Patterns:       1391
-#Threshold:      3.59E-05
-
-#binary_PA <- pyseer_results_binary_PA %>%
-#  filter(`lrt-pvalue` < 3.59E-05)  # my actual threshold from count_patterns.py
-#binary_PA #group_7941
-
-# The group group_7941 is lower than the p-value corrected test. 
-# I am looking for this file in the terminal, in the following path: /storage/home/mag6678/burghardt/MariaGil/EPS_genes/panaroo
-
-#samtools faidx panaroo_output/pan_genome_reference.fa "group_7941" > group_7941.fasta
-
-
-pyseer_results_Glucose_PA <- read_tsv(here("Data_input", "Genome", "pyseer_results_Glucose_PA.txt"))
-View(pyseer_results_Glucose_PA)
-#Patterns:       1362
-#Threshold:      3.67E-05
-
-Glucose_PA <- pyseer_results_Glucose_PA %>%
-  filter(`lrt-pvalue` < 3.67E-05)  # my actual threshold from count_patterns.py
-Glucose_PA 
-#The group kup_1~~~kup_3
-
-
-### I removed the genes that were present in less than 5% of the strains 
-
-
-
-pyseer_results_binary_maff05_PA <- read_tsv(here("Data_input", "Genome", "pyseer_results_binary_maf05_PA.txt"))
-View(pyseer_results_binary_maff05_PA)
-
-#Patterns:       1131
-#Threshold:      4.42E-05
-
-binary_maf05_PA <- pyseer_results_binary_maff05_PA %>%
-  filter(`lrt-pvalue` < 4.42E-05) 
-binary_maf05_PA
-
-
-pyseer_results_Glucose_maff05_PA <- read_tsv(here("Data_input", "Genome", "pyseer_results_Glucose_maf05_PA.txt"))
-View(pyseer_results_Glucose_maff05_PA)
-
-#Patterns:       1122
-#Threshold:      4.46E-05
-
-Glucose_maf05_PA <- pyseer_results_Glucose_maff05_PA %>%
-  filter(`lrt-pvalue` < 4.46E-05) 
-Glucose_maf05_PA
-
-### I removed the genes that were present in less than 5% of the strains 
-
-
-pyseer_snps_results_binary <- read_tsv(here("Data_input", "Genome", "pyseer_snp_results_binary.txt"))
-View(pyseer_snps_results_binary)
-
-#Patterns:       4344
-#Threshold:      1.15E-05
-
-
-binary_snp <- pyseer_snps_results_binary %>%
-  filter(`lrt-pvalue` < 1.15E-05) %>%   # your actual threshold from count_patterns.py
-  separate(variant, into = c("chrom", "pos", "ref", "alt"), sep = "_", extra = "merge") %>%
-  mutate(pos = as.numeric(pos))
-
-binary_snp
-
-
-
-### So it did not came as significant for the current cut-off suggested by pyseer, but there are a couple of candidates that are close so I will sue them 
-colnames(pyseer_snps_results_binary)
-binary_snp <- pyseer_snps_results_binary %>%
-  filter(`lrt-pvalue` < 1E-05) %>%   
-  separate(variant, into = c("chrom", "pos", "ref", "alt"), sep = "_", extra = "merge") %>%
-  mutate(pos = as.numeric(pos))
-binary_snp
-
-
-pyseer_snps_results_glucose <- read_tsv(here("Data_input", "Genome", "pyseer_snp_results_glucose.txt"))
-View(pyseer_snps_results_glucose)
-
-
-#Patterns:       4256
-#Threshold:      1.17E-05
-
-### When working with SNPs none of the 
-
-Glucose_snp <- pyseer_snps_results_glucose %>%
-  filter(`lrt-pvalue` < 1.17E-05) %>%   # your actual threshold from count_patterns.py
-  separate(variant, into = c("chrom", "pos", "ref", "alt"), sep = "_", extra = "merge") %>%
-  mutate(pos = as.numeric(pos))
-
-Glucose_snp
-
-
-pyseer_snps_results_split_binary <- read_tsv(here("Data_input", "Genome", "pyseer_snp_results_split_binary.txt"))
-View(pyseer_snps_results_split_binary)
-
-#Patterns:       4486
-#Threshold:      1.11E-05
-
-
-binary_snp_split <- pyseer_snps_results_split_binary %>%
-  filter(`lrt-pvalue` < 1.11E-05) %>%   # your actual threshold from count_patterns.py
-  separate(variant, into = c("chrom", "pos", "ref", "alt"), sep = "_", extra = "merge") %>%
-  mutate(pos = as.numeric(pos))
-
-binary_snp_split
-
-
-pyseer_snps_results_split_glucose <- read_tsv(here("Data_input", "Genome", "pyseer_snp_results_split_glucose.txt"))
-View(pyseer_snps_results_split_glucose)
-
-glucose_snp_split <- pyseer_snps_results_split_glucose %>%
-  filter(`lrt-pvalue` < 1.14E-05) %>%   # your actual threshold from count_patterns.py
-  separate(variant, into = c("chrom", "pos", "ref", "alt"), sep = "_", extra = "merge") %>%
-  mutate(pos = as.numeric(pos))
-glucose_snp_split
-
-#Patterns:       4394
-#Threshold:      1.14E-05
-
-#The SNP values have the name like pSymB_563027_GT_G, replicon = pSymB, position = 563,027, reference allele = GT, alternate allele = G
