@@ -164,7 +164,7 @@ Test for phylogenetic independence
 
 # Root the FULL tree (117 strains + 2 outgroup strains) using the outgroups 
 
-full_tree <- read.tree(here("Data_input", "Genome", "AVT_single_copy_core_concat_outgroup.fasta.treefile"))
+full_tree <- read.tree(here("Genotype", "Data_input", "AVT_single_copy_core_concat_outgroup.fasta.treefile"))
 full_tree #I am including the file that has three outgroups
 
 #full_tree$tip.label
@@ -190,7 +190,7 @@ analysis_tree <- drop.tip(tree_rooted2, c("Sinorhizobium meliloti RM1021", "Sino
 analysis_tree
 
 
-# 3. Resolve any polytomies on the now-pruned, rooted tree
+# 3. Resolve any polytomies on the now-pruned, rooted tree. I don't think the tree had a polytomies, so I don't think this was needed in the analysis now that I am revisiting it.
 analysis_tree <- multi2di(analysis_tree)
 analysis_tree
 analysis_tree$edge.length[analysis_tree$edge.length == 0] <- 1e-8
@@ -224,20 +224,24 @@ pheno_df <- data.frame(
   dry_binary = pheno_vec
 )
 
-pheno_df
+pheno_df ## Mucoid is 1 and dry is 0
+
+#View(pheno_df)
+
+set.seed(123) ### My results changed slightly from what I currently have in the manuscript because I did not set.seed before, but nothing that changes the interpretation
 
 is.rooted(analysis_tree)
 is.binary(analysis_tree)
 
 
 comp_data <- comparative.data(
-  phy = tree,
-  data = pheno_df,
+  phy       = analysis_tree,       # fixed
+  data      = pheno_df,
   names.col = "strain",
-  vcv = TRUE
+  vcv       = FALSE                # phylo.d doesn't need it
 )
 
-
+comp_data
 
 d_result <- phylo.d(
   data = comp_data,
@@ -258,7 +262,7 @@ d_summary <- data.frame(
                          # not a count -- hardcode the number you specified)
 )
 
-d_summary
+print(d_summary)
 
 write_csv(d_summary, here("Genotype", "Tables", "EPS_TableS4_FromR.csv"))
 
