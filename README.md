@@ -21,5 +21,5 @@ We are using Version 2026.09.0+174 (2026.09.0+174)
 2. Open the "Rhizobia_EPS_Manuscript.Rproj" in the repository root of R studio
 3. Then in the console run "renv::restore()" and then type y.
 4. Knit the analysis.
-5. There is one big file that is not present: strain_118_variants.vcf. However in Genotype/Data_input/ we have the compressed version of strain_118_variants.vcf.zip that is used in the code Phenotype/Analysis/ in the Rmarkdown MucoidEPS_ManuscriptRmd.Rmd
+5. There is one big file that is not present: strain_118_variants.vcf. However in Genotype/Data_input/ we have the compressed version "strain_118_variants.vcf.zip" that is used in the code Phenotype/Analysis/ in the Rmarkdown MucoidEPS_ManuscriptRmd.Rmd because it is pivotal when accounting for population structure
 
