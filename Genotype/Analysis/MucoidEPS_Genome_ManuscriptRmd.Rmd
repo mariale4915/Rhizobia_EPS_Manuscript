@@ -416,6 +416,8 @@ python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/phylogeny_distanc
 conda install bioconda::pyseer
 
 #### Presence absence (PA)  ####
+#### I think after the review I might need to standardize the names of the pyseer files
+
 
 ### Pyseer code to run the presence absence data using the binary phenotype where Mucoid is 1 and Dry is 0.
 
