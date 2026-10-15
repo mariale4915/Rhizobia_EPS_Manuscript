@@ -10,9 +10,6 @@ output: html_document
 
 ```{r}
 
-renv::init()
-
-
 library(performance)
 library(lmerTest)
 library(ggbeeswarm)
@@ -67,7 +64,19 @@ I am working with Sohini's recent vcf file created with the alignment to referen
 
 ```{r}
 
-vcf <- read.vcfR(here("Genotype", "Data_input", "strain_118_variants.vcf")) ### I could not upload the .vcf file to github cause it was too heavy, so I uploaded the zipped version. Try to unzzip it and run it. The name is strain_118_variants.vcf.zip.
+### Using the version with zip that is the one that got uploaded in Github
+
+zip_path <- here("Genotype", "Data_input", "strain_118_variants.vcf.zip")
+vcf_path <- here("Genotype", "Data_input", "strain_118_variants.vcf")
+
+unzip(zip_path, exdir = here("Genotype", "Data_input"))
+
+unlink(here("Genotype", "Data_input", "__MACOSX"), recursive = TRUE)
+
+vcf <- read.vcfR(vcf_path)
+
+
+#vcf <- read.vcfR(here("Genotype", "Data_input", "strain_118_variants.vcf")) ### I could not upload the .vcf file to github cause it was too heavy, so I uploaded the zipped version. Try to unzzip it and run it. The name is strain_118_variants.vcf.zip. I will keep this here and delete after review.
 
 gt_reference <- extract.gt(vcf, element = "GT") ## 0 and 1
 #gt_reference

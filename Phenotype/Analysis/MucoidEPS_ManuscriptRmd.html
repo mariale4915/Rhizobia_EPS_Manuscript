@@ -516,7 +516,16 @@ in-house strain AVT118. The vcf file has 96,206 SNP</p>
 <p>I am working with Sohini’s recent vcf file created with the alignment
 to reference genome 118. This is the link: <a href="https://github.com/sohini5981/AVT_SS/tree/main/Data" class="uri">https://github.com/sohini5981/AVT_SS/tree/main/Data</a> and
 the name of the file is strain_118_variants.vcf.zip</p>
-<pre class="r"><code>vcf &lt;- read.vcfR(here(&quot;Genotype&quot;, &quot;Data_input&quot;, &quot;strain_118_variants.vcf&quot;))</code></pre>
+<pre class="r"><code>### Using the version with zip that is the one that got uploaded in Github
+
+zip_path &lt;- here(&quot;Genotype&quot;, &quot;Data_input&quot;, &quot;strain_118_variants.vcf.zip&quot;)
+vcf_path &lt;- here(&quot;Genotype&quot;, &quot;Data_input&quot;, &quot;strain_118_variants.vcf&quot;)
+
+unzip(zip_path, exdir = here(&quot;Genotype&quot;, &quot;Data_input&quot;))
+
+unlink(here(&quot;Genotype&quot;, &quot;Data_input&quot;, &quot;__MACOSX&quot;), recursive = TRUE)
+
+vcf &lt;- read.vcfR(vcf_path)</code></pre>
 <pre><code>## Scanning file to determine attributes.
 ## File attributes:
 ##   meta lines: 30
@@ -534,7 +543,9 @@ the name of the file is strain_118_variants.vcf.zip</p>
 ##   row_num: 0
 ## Processed variant 1000Processed variant 2000Processed variant 3000Processed variant 4000Processed variant 5000Processed variant 6000Processed variant 7000Processed variant 8000Processed variant 9000Processed variant 10000Processed variant 11000Processed variant 12000Processed variant 13000Processed variant 14000Processed variant 15000Processed variant 16000Processed variant 17000Processed variant 18000Processed variant 19000Processed variant 20000Processed variant 21000Processed variant 22000Processed variant 23000Processed variant 24000Processed variant 25000Processed variant 26000Processed variant 27000Processed variant 28000Processed variant 29000Processed variant 30000Processed variant 31000Processed variant 32000Processed variant 33000Processed variant 34000Processed variant 35000Processed variant 36000Processed variant 37000Processed variant 38000Processed variant 39000Processed variant 40000Processed variant 41000Processed variant 42000Processed variant 43000Processed variant 44000Processed variant 45000Processed variant 46000Processed variant 47000Processed variant 48000Processed variant 49000Processed variant 50000Processed variant 51000Processed variant 52000Processed variant 53000Processed variant 54000Processed variant 55000Processed variant 56000Processed variant 57000Processed variant 58000Processed variant 59000Processed variant 60000Processed variant 61000Processed variant 62000Processed variant 63000Processed variant 64000Processed variant 65000Processed variant 66000Processed variant 67000Processed variant 68000Processed variant 69000Processed variant 70000Processed variant 71000Processed variant 72000Processed variant 73000Processed variant 74000Processed variant 75000Processed variant 76000Processed variant 77000Processed variant 78000Processed variant 79000Processed variant 80000Processed variant 81000Processed variant 82000Processed variant 83000Processed variant 84000Processed variant 85000Processed variant 86000Processed variant 87000Processed variant 88000Processed variant 89000Processed variant 90000Processed variant 91000Processed variant 92000Processed variant 93000Processed variant 94000Processed variant 95000Processed variant 96000Processed variant 97000Processed variant 98000Processed variant 99000Processed variant 100000Processed variant 101000Processed variant 102000Processed variant 103000Processed variant 104000Processed variant 105000Processed variant 106000Processed variant 107000Processed variant 108000Processed variant 109000Processed variant 110000Processed variant 111000Processed variant 112000Processed variant 113000Processed variant 114000Processed variant 115000Processed variant 116000Processed variant 117000Processed variant 118000Processed variant 119000Processed variant 120000Processed variant 121000Processed variant 122000Processed variant 123000Processed variant 124000Processed variant 125000Processed variant 126000Processed variant 127000Processed variant 128000Processed variant 129000Processed variant 130000Processed variant 131000Processed variant 132000Processed variant 133000Processed variant 134000Processed variant 135000Processed variant 136000Processed variant: 136566
 ## All variants processed</code></pre>
-<pre class="r"><code>gt_reference &lt;- extract.gt(vcf, element = &quot;GT&quot;) ## 0 and 1
+<pre class="r"><code>#vcf &lt;- read.vcfR(here(&quot;Genotype&quot;, &quot;Data_input&quot;, &quot;strain_118_variants.vcf&quot;)) ### I could not upload the .vcf file to github cause it was too heavy, so I uploaded the zipped version. Try to unzzip it and run it. The name is strain_118_variants.vcf.zip. I will keep this here and delete after review.
+
+gt_reference &lt;- extract.gt(vcf, element = &quot;GT&quot;) ## 0 and 1
 #gt_reference
 
 gt_numeric &lt;- apply(gt_reference, 2, as.numeric) #&quot;2&quot; tells R to look at the data by columns, and &quot;as.numeric&quot; changes the text to other values into numbers
