@@ -13,11 +13,19 @@
 \f0\b0 : \
 \
 
-\f1\b AVT_single_copy_core_concat_outgroup.fasta.treefile\
+\f1\b \
+AVT_single_copy_core_concat.fasta.treefile\
+\
 
-\f0\b0 \
+\f0\b0 Maximum likelihood phylogenetic tree generated with the single-copy core genes of the 117 strains from the AVT collection.\
 
 \f1\b \
+AVT_single_copy_core_concat_outgroup.fasta.treefile\
+
+\f0\b0 \
+Maximum likelihood phylogenetic tree generated with teh single-copy core genes from the 117 strains of the collection plus three outgroups: Sinorhizobium medicae USDA1037, Sinorhizobium meliloti RM1021, Sinorhizobium meliloti USDA1106.
+\f1\b \
+\
 Strains_Description_Phenotype_Github.xlsx\
 
 \f0\b0 \
@@ -77,4 +85,82 @@ Gene: name of the group that represents the clusters of genes with high similari
 The remaining columns contain the strain names in the format \'93strain_xxx\'94 used by the person who ran the Panaroo output. To be able to use this file with the other files we had (phylogenetic data and phenotypic data), we merged this file with 
 \f1\b Strains_Description_Phenotype_Github.xlsx 
 \f0\b0 that contains the other labeles that we use\
+\
+\
+
+\f1\b ###Files created in the batch and transfered to the github repository\
+
+\f0\b0 \
+\
+
+\f1\b #### Presence/absence\
+
+\f0\b0 \
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 Pyseer code to evaluate the association between gene presence/absence data (binary and continuous).\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+
+\f1\b pyseer_results_Glucose_maf05_PA.txt
+\f0\b0 \
+\
+The phenotypic trait was the continuous anthrone values, where each phenotypic value is the Glucose/OD600. We ran a linear mixed model (lmm). In the glucose phenotype, the population structure was accounted for as the kinship matrix \
+\
+pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \\\
+  --pres Data_input/gene_presence_absence_rtab_pyseer_maf05.tsv \\\
+  --similarity Data_input/phylogeny_similarity.tsv \\\
+  --output-patterns patterns_Glucose_maf05_PA.txt \\\
+  > pyseer_results_Glucose_maf05_PA.txt\
+\
+\
+
+\f1\b pyseer_results_glm_binary_PA.txt
+\f0\b0 \
+\
+\
+ Pyseer code to run the presence absence data using the binary phenotype where Mucoid is 1 and Dry is 0. We run a generalized linear model. \
+\
+pyseer --phenotypes Data_input/Binary_phenotype_pyseer.tsv \\\
+  --pres Data_input/gene_presence_absence_rtab_pyseer_maf05.tsv \\\
+  --distances Data_input/phylogeny_distance_forglm.tsv \\\
+  --max-dimensions 8 \\\
+  --output-patterns patterns_glm_binary_PA.txt \\\
+  > pyseer_results_glm_binary_PA.txt\
+\
+\
+
+\f1\b ##### SNP-level variation\
+
+\f0\b0 \
+Pyseer code to evaluate the association between SNP-level variation with the traits (binary and continuous)\
+\
+
+\f1\b pyseer_results_glm_binary_snps.txt
+\f0\b0 \
+\
+In the binary phenotype, we ran a generalized linear model where the population structure was accounted for based on the distances stated by the phylogenetic tree\
+\
+pyseer --phenotypes Data_input/Binary_phenotype_pyseer.tsv \\\
+  --vcf Data_input/strain_118_filtered.recode.vcf.gz \\\
+  --distances Data_input/phylogeny_distance_forglm.tsv \\\
+  --max-dimensions 8 \\\
+  --output-patterns patterns_glm_binary_snps.txt \\\
+  > pyseer_results_glm_binary_snps.txt\
+\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f1\b \cf0 pyseer_snp_results_glucose.txt
+\f0\b0 \
+\
+In the glucose phenotype, the population structure was accounted for as the kinship matrix \
+\
+\
+pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \\\
+  --vcf Data_input/strain_118_filtered.recode.vcf.gz \\\
+  --similarity Data_input/phylogeny_similarity.tsv \\\
+  --output-patterns patterns_snps_glucose.txt \\\
+  > pyseer_snp_results_glucose.txt\
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+\cf0 \
+\
 }

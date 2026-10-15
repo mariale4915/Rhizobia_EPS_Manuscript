@@ -5,6 +5,7 @@ date: "2026-07-01"
 output: html_document
 ---
 
+
 ```{r setup, include=FALSE}
 library(writexl)
 library(tidyverse)
@@ -45,7 +46,8 @@ set.seed(123)
 tree<-read.tree(here("Genotype", "Data_input", "AVT_single_copy_core_concat.fasta.treefile")) 
 tree
 
-## Extract the strains in the tree which represents what Sohini used. 
+## Extract the strains in the tree which represents what Sohini used in Guha et al., 2026
+
 tip_strains <- data.frame(Strain_Code = tree$tip.label) #I am using the Strain_Code name to match the column name for that type of naming system in Strains_Description_Phenotype_Github.xlsx
 #This has
 
@@ -66,7 +68,7 @@ write_xlsx(meta_tree, here("Genotype", "Tables", "meta_tree.xlsx"))
 
 ```{r}
 
-## This tables was obtained with the code bcftools gtcheck  -u GT,GT strain_118_variants_diploid.vcf
+## This tables was obtained with the code bcftools gtcheck  -u GT,GT strain_118_variants_diploid.vcf according to Guha et al., (2026)
 
 mismatch_data <- read_lines(here("Genotype", "Data_input", "strain_118_variants_pairwise_mismatches.tsv"))
 
@@ -125,7 +127,7 @@ hist(mismatch_filtered$SNP_differences)
 
 
 
-## For itols I will only extract the mismatches and pair s
+## For itols I will only extract the mismatches and pairs
 mismatch_filtered
 mismatch_filtered_subset <- mismatch_filtered %>% dplyr::select(c("Pairs", "Mucoid", "Dry", "SNP_differences"))
 mismatch_filtered_subset
@@ -176,7 +178,7 @@ full_tree$tip.label[full_tree$tip.label == "AVT2197065.1"] <- "Sinorhizobium mel
 
 full_tree     
 
-tree2 <- drop.tip(full_tree, "Sinorhizobium medicae USDA1037") #I think she dropped this one because is causing problems when I try to root using the three
+tree2 <- drop.tip(full_tree, "Sinorhizobium medicae USDA1037")
 tree_rooted2 <- root(
   tree2,
   outgroup = c("Sinorhizobium meliloti RM1021",
@@ -184,20 +186,27 @@ tree_rooted2 <- root(
   resolve.root = TRUE
 )
 
-# 2. Then I will drop the outgroups, since I have no complete phenotype data for them
+# Then I will drop the outgroups, since I have no complete phenotype data for them
+
 analysis_tree <- drop.tip(tree_rooted2, c("Sinorhizobium meliloti RM1021", "Sinorhizobium meliloti USDA1106"))
 analysis_tree
 
 
-# 3. Resolve any polytomies on the now-pruned, rooted tree. I don't think the tree had a polytomies now that I am taking a second look at it, so I don't think this was needed in the analysis, but this should not change the result. Consider pruning this step after reviewing.
+# Resolve any polytomies on the now-pruned, rooted tree. I don't think the tree had a polytomies now that I am taking a second look at it, so I don't think this was needed in the analysis, but this should not change the result. Consider pruning this step after reviewing.
 analysis_tree <- multi2di(analysis_tree)
 analysis_tree
 analysis_tree$edge.length[analysis_tree$edge.length == 0] <- 1e-8
 
 
+### I will create a dataframe that will also be used to run the GWAS with binary traits using pyseer
+
+Strains_pyseer <- Strains %>% mutate(Binary_trait = ifelse(Morphology == "Mucoid", 1,0))
+Strains_pyseer <- Strains_pyseer %>% dplyr::select(c("Strain_Code", "Binary_trait"))
+Strains_pyseer <- Strains_pyseer %>% rename("samples" = "Strain_Code") ## pyseer wants it labeled as "samples".
+Strains_pyseer
 
 
-
+###
 pheno <- Strains_pyseer
 pheno
 
@@ -211,7 +220,7 @@ pheno_vec
 
 cat("Tree has", Ntip(tree), "tips after matching.\n")
 cat("Phenotype counts:\n")
-print(table(pheno_vec))
+print(table(pheno_vec)) #Yes, this has the right information
 
 
 # phylo.d: is the phenotype clumped or scattered on the tree?
@@ -271,7 +280,7 @@ write_csv(d_summary, here("Genotype", "Tables", "EPS_TableS4_FromR.csv"))
 
 ## Preparing the files that will be used as data input in pyseer
 
-I am transfering "gene_presence_absence.Rtab", "Binary_phenotype_pyseer.txv" and "Glucose_phenotype_pyseer.tsv" to the following path in the terminal to run pyseer there: 
+I am transfering "gene_presence_absence.Rtab", "Binary_phenotype_pyseer.tsv" and "Glucose_phenotype_pyseer.tsv" to the following path in the terminal to run pyseer there: 
 
 /storage/home/mag6678/burghardt/MariaGil/EPS_genes/pyseer_EPS/Data_input
 
@@ -402,7 +411,7 @@ python /storage/home/mag6678/burghardt/MariaGil/pyseer/scripts/phylogeny_distanc
 
 # Script to run pyseer #
 
-```{r, eval=FALSE= FALSE}
+```{r, eval=FALSE}
 
 conda install bioconda::pyseer
 
@@ -433,7 +442,7 @@ pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \
 
 #### SNPs ####
 
-In the binary phenotype in runned a generalized linear model where the population structure was accounted based on the distances stated by the 
+In the binary phenotype we ran a generalized linear model where the population structure was accounted based on the distances stated by the phylogenetic tree
 
 pyseer --phenotypes Data_input/Binary_phenotype_pyseer.tsv \
   --vcf Data_input/strain_118_filtered.recode.vcf.gz \
@@ -457,7 +466,6 @@ pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \
 To calculate the number of genes/SNP variants that covary across all of the strains I used the count_patterns.py that is part of the pyseer github folder. 
 
 
-Pyseer will test all the SNPs/genes, and it will simultaneously create pattern.txt files that evaluate how many distinct patterns actually exist among all the variants tested. For every tested variant, pyseer writes one line encoding that variant's presence/absence (or genotype) vector across all the strains. Two variants get written as the identical line if they have the exact same 0/1 pattern across every single strain, - same strains carrying it, same strains lacking it, no exception. 
 
 ```
 
