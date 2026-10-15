@@ -1,0 +1,101 @@
+This Read.Me file has been written to describe the data_input used for this analysis 
+
+Genome: 
+
+
+AVT_single_copy_core_concat.fasta.treefile
+
+Maximum likelihood phylogenetic tree generated with the single-copy core genes of the 117 strains from the AVT collection.
+
+AVT_single_copy_core_concat_outgroup.fasta.treefile
+
+Maximum likelihood phylogenetic tree generated with teh single-copy core genes from the 117 strains of the collection plus three outgroups: Sinorhizobium medicae USDA1037, Sinorhizobium meliloti RM1021, Sinorhizobium meliloti USDA1106.
+
+Strains_Description_Phenotype_Github.xlsx
+
+This file describes the two types of code we used to name the strains, the morphology, and the number of co-isolated pairs. 
+
+* Strain_Code: This is the naming system that was used to write Guha et a., 2026, and these names were used when creating the maximum-likelihood phylogenetic tree that is present in the files AVT_single_copy_core_concat_outgroup.fasta.treefile, and the file AVT_single_copy_core_concat.fasta.treefile
+* Strain: This naming system was originally used when isolating the strains, and we used it for the Paillan et al., 2026
+* Morphology: This is the morphology of each of the strains. From strain 001 to 096, the strains were mucoid; from strain 097 to 123, they displayed a dry morphology 
+* Pairs: 19 of the co-isolated pairs were sent for whole-genome sequencing. The same number means that they are the mucoid and dry bacteria that were part of the pair
+
+strain_118_variants_pairwise_mismatches.tsv
+
+This file was generated in Guha et al., 2026. Briefly, it was produced by bcftools (1.23.1+htslib-1.23.1). The command line was: bcftools gtcheck  -u GT,GT strain_118_variants_diploid.vcf. The idea was to compare the matching and mismatching sites using the variant calling format (VCF) of all of the AVT strains in the collection. The file can be found in this repository, but it can also be found in the GitHub path: Data/strain_118_variants_pairwise_mismatches.tsv
+
+Query sample and Genotyped sample are the samples that were contrasted against each other
+Discordance: This is a dissimilarity score between the two samples. The bigger the numbers, the more different the genotypes. Samples that are compared across more sites tend to yield higher raw scores simply because they have more data. 
+Average -log P(HWE): This helps assess whether the samples appear similar by chance.  A higher value indicates a better match because it means the observed match pattern is very unlikely to have occurred randomly.
+Number of sites compared: How many variant positions had usable genotype data in both of the samples that were compared? The bigger the number of sites compared in a pair of samples, the more informative it is
+Number of matching genotypes: This indicates how many genotype calls were identical across the two samples after comparing sites. 
+
+
+strain_118_variants.vcf
+
+This file was constructed in Guha et al., 2026 and the process is under “Variant calling on AVT genomes” in Materials and Methods. Briefly, AVT118 was chosen as the in-house reference strain, and the variant calling (vcf) file was created after mapping the short reads of each AVT strain to that reference genome.
+
+
+gene_presence_absence.Rtab
+
+This is one of the panaroo outputs from Guha et al., 2026 that represents the presence-absence matrix. This is the preferred format to run PySeer. 
+Gene: name of the group that represents the clusters of genes with high similarity
+The remaining columns contain the strain names in the format “strain_xxx” used by the person who ran the Panaroo output. To be able to use this file with the other files we had (phylogenetic data and phenotypic data), we merged this file with Strains_Description_Phenotype_Github.xlsx that contains the other labeles that we use
+
+
+###Files created in the batch and transfered to the github repository
+
+
+#### Presence/absence
+
+Pyseer code to evaluate the association between gene presence/absence data (binary and continuous).
+
+pyseer_results_Glucose_maf05_PA.txt
+
+The phenotypic trait was the continuous anthrone values, where each phenotypic value is the Glucose/OD600. We ran a linear mixed model (lmm). In the glucose phenotype, the population structure was accounted for as the kinship matrix 
+
+pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \
+  --pres Data_input/gene_presence_absence_rtab_pyseer_maf05.tsv \
+  --similarity Data_input/phylogeny_similarity.tsv \
+  --output-patterns patterns_Glucose_maf05_PA.txt \
+  > pyseer_results_Glucose_maf05_PA.txt
+
+
+pyseer_results_glm_binary_PA.txt
+
+
+ Pyseer code to run the presence absence data using the binary phenotype where Mucoid is 1 and Dry is 0. We run a generalized linear model. 
+
+pyseer --phenotypes Data_input/Binary_phenotype_pyseer.tsv \
+  --pres Data_input/gene_presence_absence_rtab_pyseer_maf05.tsv \
+  --distances Data_input/phylogeny_distance_forglm.tsv \
+  --max-dimensions 8 \
+  --output-patterns patterns_glm_binary_PA.txt \
+  > pyseer_results_glm_binary_PA.txt
+
+
+##### SNP-level variation
+
+Pyseer code to evaluate the association between SNP-level variation with the traits (binary and continuous)
+
+pyseer_results_glm_binary_snps.txt
+
+In the binary phenotype, we ran a generalized linear model where the population structure was accounted for based on the distances stated by the phylogenetic tree
+
+pyseer --phenotypes Data_input/Binary_phenotype_pyseer.tsv \
+  --vcf Data_input/strain_118_filtered.recode.vcf.gz \
+  --distances Data_input/phylogeny_distance_forglm.tsv \
+  --max-dimensions 8 \
+  --output-patterns patterns_glm_binary_snps.txt \
+  > pyseer_results_glm_binary_snps.txt
+
+pyseer_snp_results_glucose.txt
+
+In the glucose phenotype, the population structure was accounted for as the kinship matrix 
+
+
+pyseer --lmm --phenotypes Data_input/Glucose_phenotype_pyseer.tsv \
+  --vcf Data_input/strain_118_filtered.recode.vcf.gz \
+  --similarity Data_input/phylogeny_similarity.tsv \
+  --output-patterns patterns_snps_glucose.txt \
+  > pyseer_snp_results_glucose.txt
